@@ -87,7 +87,6 @@
     <h1>Methodology</h1>
     <div class="subtitle">
       Canonical reference for what the dashboard is showing.
-      Source: <a href="https://github.com/yohplala/acc_dual_mom/blob/main/docs/METHODOLOGY.md" style="color: var(--accent);">docs/METHODOLOGY.md</a>.
     </div>
     <nav>
           <a href="index.html">Strategies</a>
@@ -97,7 +96,6 @@
           <a href="world.html">World</a>
           <a href="correlations.html">Correlation</a>
           <span class="nav-current">Methodology</span>
-          <a href="grid_search.html">Grid search</a>
     </nav>
 
     <div class="panel md">
@@ -114,7 +112,6 @@
 </ul>
 </li>
 <li><a href="#24-allocation-rules-pea_momentumallocatepy">2.4 Allocation rules (pea_momentum/allocate.py)</a></li>
-<li><a href="#25-score-band-filter-pea_momentumbacktestpy">2.5 Score-band filter (pea_momentum/backtest.py)</a></li>
 </ul>
 </li>
 <li><a href="#3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (pea_momentum/stitching.py, pea_momentum/fetch.py)</a><ul>
@@ -143,11 +140,10 @@
 </div>
 <h2 id="1-framework-label">1. Framework label</h2>
 <p>The framework is <strong>rank-only momentum rotation</strong>. Selection is purely by score rank — there is no positive-momentum (<code>score &gt; 0</code>) floor and no absolute-momentum (vs safe-asset) gate. Every asset, including the safe asset when listed, competes on rank alone. References to "ADM" and "DM" elsewhere in the doc and dashboard label the <em>score recipe</em> (e.g. accelerated 1m/3m/6m mean vs single 12-month lookback), not any filter design.</p>
-<p>A separate <strong>score-band filter</strong> exists to suppress whipsaw swaps where the proposed entrant barely beats the proposed exit — see <a href="#25-score-band-filter-pea_momentumbacktestpy">Score-band filter</a> below. It is <em>not</em> a selection filter (it can't drop a slot to cash); it can only veto a swap and re-hold the prior winner.</p>
 <h2 id="2-strategy-modes">2. Strategy modes</h2>
 <p>Two execution modes coexist:</p>
 <ul>
-<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, weight them, and apply the score-band filter to any proposed swap. The cadence (<code>weekly_sunday</code>, <code>biweekly_sunday</code>, <code>monthly_first_sunday</code>, <code>quarterly_first_sunday</code>, <code>semiannual_first_sunday</code>) drives when this fires.</li>
+<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_sunday</code>, <code>biweekly_sunday</code>, <code>monthly_first_sunday</code>, <code>quarterly_first_sunday</code>, <code>semiannual_first_sunday</code>) drives when this fires.</li>
 <li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nasdaq_lev_70_bh</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../pea_momentum/universe.py"><code>pea_momentum/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
 </ul>
 <h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
@@ -158,7 +154,6 @@
   ──▶ largest-remainder rounding to granularity_pct
   ──▶ rounding shortfall ─▶ residual_holder
        (= safe asset if listed in `assets:`, else CASH 0%-return placeholder)
-  ──▶ score-band filter (suppress swap if entrant doesn't beat exit by ≥ band)
 </code></pre>
 <h3 id="22-scoring-pea_momentumscorepy">2.2 Scoring (<code>pea_momentum/score.py</code>)</h3>
 <p>Score at signal date <code>t</code>:</p>
@@ -182,7 +177,7 @@ top_n: 1                        # N picks per region (not global)
 <p>Three weighting paths are supported:</p>
 <ul>
 <li><strong><code>equal_weight</code></strong> (the framework default): <code>1/N</code> across the selected top-N assets. Canonical Antonacci-style weighting and the recommended live setup; robust to negative scores.</li>
-<li><strong><code>score_proportional</code></strong>: |score|-proportional weights with <strong>rank-based attribution</strong> — the highest-scoring asset always gets the largest weight, the lowest-scoring the smallest. For all-positive selections this collapses to the canonical <code>w_i = s_i / Σ s_j</code> formula (because score-rank == |score|-rank). For mixed-sign or all-negative selections (reachable now that the top-N has no filter), the formula stays well-defined: no negative weights (shorts), no inverted ranks. Concretely with selected scores <code>[-0.05, -0.10, -0.20]</code>, the pure formula <code>s/Σs = [0.143, 0.286, 0.571]</code> would give the <em>worst</em> score the largest weight; we instead assign the |score|-magnitudes by rank → <code>[0.571, 0.286, 0.143]</code> so the <em>least-crashing</em> asset gets the highest conviction. Used by <code>quad_growth</code> and <code>regional_pea</code>.</li>
+<li><strong><code>score_proportional</code></strong>: a magnitude-weighted alternative used by a small number of strategies in the lineup. Sensitivity exhibit relative to the equal-weight default.</li>
 <li><strong><code>regional_weights</code></strong> (paired with <code>selection_rule: top_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
 </ul>
 <p>After raw weights are computed, they are rounded via <strong>largest-remainder (Hare quota)</strong> to integer multiples of <code>granularity_pct</code> (10% by default). Largest-remainder is exact-summing by construction, so when there are selected candidates the rounded weights total 100% — no residual.</p>
@@ -190,11 +185,6 @@ top_n: 1                        # N picks per region (not global)
 - the <strong>safe asset</strong> if it's listed in the strategy's <code>assets:</code> (residual earns €STR yield), OR
 - a <strong><code>cash</code></strong> placeholder (0%-return, no yield) when the strategy has no safe asset listed.</p>
 <p>The "list the safe asset explicitly to get the defensive crash behaviour" pattern is the YAML-honesty corollary: what you list is what you get.</p>
-<h3 id="25-score-band-filter-pea_momentumbacktestpy">2.5 Score-band filter (<code>pea_momentum/backtest.py</code>)</h3>
-<p>After the proposed weights are computed, a swap-suppression filter checks each proposed (entrant, exit) pair: if the entrant's score doesn't beat the matched exit's score by at least <code>momentum_delta_threshold_pct</code> (in score units = percentage points of mean ROC), the swap is rejected and the prior winner is re-held. The within-set score-prop reweighting still applies if any unrejected swap remains.</p>
-<p>The band is configured per strategy via <code>momentum_delta_threshold_pct:</code> — explicit <code>0</code> disables the filter; <code>None</code> inherits the shared default (<code>2.0</code> in the current <code>strategies.yaml</code>). Per-strategy values in the live lineup range from <code>0</code> (<code>quad_growth</code> runs band-off) to <code>8.5</code> (<code>tri_us_em_jp</code> at weekly cadence — high-noise signal needs the deepest dampener) — see each strategy's comment block for the rationale and grid-sweep evidence.</p>
-<p><strong>Region-local pairing</strong>: when <code>selection_rule: top_per_region</code> is set, the band filter pairs entrants and exits <em>within each region</em> rather than globally. Without this, a US entrant could be matched against (say) an Asia exit; if the cross-region pair is rejected, the wrong region's exit gets re-held and the per-region cardinality invariant breaks. The fix is opaque to the canonical <code>top_n</code> rule (no change in pairing for global selection).</p>
-<p>The filter is documented as a separate concept from selection because it can only veto a swap, never drop a slot to cash. A strategy that has rejected its only swap holds the prior winner exactly; turnover for that rebalance is zero, but the equity stays equity-allocated.</p>
 <h2 id="3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (<code>pea_momentum/stitching.py</code>, <code>pea_momentum/fetch.py</code>)</h2>
 <p>Most PEA-eligible UCITS ETFs in the active universe launched between 2014 and 2024, so a 2008-onward backtest needs pre-launch history. The splice approach:</p>
 <ol>
@@ -379,7 +369,7 @@ top_n: 1                        # N picks per region (not global)
 </tr>
 <tr>
 <td><code>realloc_pct</code></td>
-<td>Fraction of rebalance assessments that produced an actual reallocation (turnover &gt; 0). Lower = more rebalances re-confirmed the prior holdings or were vetoed by the score-band filter.</td>
+<td>Fraction of rebalance assessments that produced an actual reallocation (turnover &gt; 0). Lower = more rebalances re-confirmed the prior holdings.</td>
 </tr>
 <tr>
 <td><code>final_equity</code></td>
@@ -462,13 +452,6 @@ top_n: 1                        # N picks per region (not global)
 <td>Paired with <code>top_per_region</code>; each region's weight is split equally among its picks.</td>
 </tr>
 <tr>
-<td>Score-band filter (whipsaw suppression)</td>
-<td><code>momentum_delta_threshold_pct: 5.0</code> (per strategy) or shared default</td>
-<td><code>Strategy.momentum_delta_threshold_pct</code>, <code>Scoring.momentum_delta_threshold_pct</code></td>
-<td><code>Band</code> column on the Strategies table</td>
-<td>Suppresses a swap when the entrant doesn't beat the matched exit by at least the configured margin (in score units = pp of mean ROC). <code>0</code> disables. Empty (—) for buy-and-hold.</td>
-</tr>
-<tr>
 <td>Rebalance cadence</td>
 <td><code>rebalance: monthly_first_sunday</code></td>
 <td><code>Strategy.rebalance</code></td>
@@ -494,7 +477,7 @@ top_n: 1                        # N picks per region (not global)
 <td>(n/a)</td>
 <td>(n/a)</td>
 <td>—</td>
-<td>Selection is rank-only — there is no <code>score &gt; 0</code> floor and no absolute-momentum gate. The score-band filter is not a selection filter either (it only vetoes swaps, never drops a slot to cash).</td>
+<td>Selection is rank-only — there is no <code>score &gt; 0</code> floor and no absolute-momentum gate.</td>
 </tr>
 <tr>
 <td>Safe asset</td>
@@ -539,13 +522,7 @@ top_n: 1                        # N picks per region (not global)
 </ul>
     </div>
 
-    <footer>
-      <p>
-        Rendered from <code>docs/METHODOLOGY.md</code> with the Python
-        <code>markdown</code> library. The repo's source markdown remains
-        the canonical version; this page mirrors it for in-dashboard reading.
-      </p>
-    </footer>
+    <footer></footer>
   </div>
 </body>
 </html>
