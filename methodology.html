@@ -1,0 +1,551 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PEA Accelerated Dual Momentum — Methodology</title>
+  <style>
+    :root {
+      --bg: #0e1116; --panel: #161b22; --border: #30363d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+      --positive: #3fb950; --negative: #f85149;
+    }
+    html, body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      margin: 0; padding: 0;
+    }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 4px 0; font-size: 28px; text-align: center; }
+    .subtitle { color: var(--muted); margin-bottom: 24px; font-size: 13px; text-align: center; }
+    .panel {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 6px; padding: 24px 32px; margin-bottom: 16px;
+    }
+    nav {
+      display: flex; justify-content: center; gap: 8px; flex-wrap: wrap;
+      margin: 8px 0 24px 0;
+    }
+    nav a, nav .nav-current {
+      display: inline-block; padding: 8px 18px; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--panel); font-size: 14px;
+      font-weight: 500; text-decoration: none;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    nav a { color: var(--accent); }
+    nav a:hover { background: var(--bg); border-color: var(--accent); }
+    nav .nav-current {
+      background: var(--accent); color: var(--bg);
+      border-color: var(--accent); cursor: default;
+    }
+    /* Markdown content typography. */
+    .md h1 { display: none; }  /* page-level <h1> already rendered by the template scaffolding */
+    .md h2 {
+      margin: 32px 0 12px 0; font-size: 22px;
+      border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    }
+    .md h3 { margin: 24px 0 8px 0; font-size: 17px; color: var(--accent); }
+    .md h4 { margin: 18px 0 6px 0; font-size: 15px; color: var(--text); }
+    .md p { line-height: 1.55; margin: 8px 0; }
+    .md ul, .md ol { line-height: 1.55; margin: 8px 0; padding-left: 26px; }
+    .md li { margin: 4px 0; }
+    .md a { color: var(--accent); text-decoration: none; }
+    .md a:hover { text-decoration: underline; }
+    .md code {
+      background: rgba(127, 137, 152, 0.15); color: var(--text);
+      padding: 1px 6px; border-radius: 3px; font-size: 13px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .md pre {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 4px; padding: 12px 16px; overflow-x: auto; font-size: 13px;
+    }
+    .md pre code { background: transparent; padding: 0; font-size: 13px; }
+    .md table {
+      width: 100%; border-collapse: collapse;
+      margin: 12px 0; font-size: 13px;
+    }
+    .md th, .md td {
+      text-align: left; padding: 6px 10px;
+      border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    .md th {
+      color: var(--muted); font-weight: 500; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .md blockquote {
+      border-left: 3px solid var(--accent); padding-left: 12px;
+      margin: 12px 0; color: var(--muted);
+    }
+    .md hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+    .md strong { color: var(--text); }
+    footer { margin-top: 48px; color: var(--muted); font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Methodology</h1>
+    <div class="subtitle">
+      Canonical reference for what the dashboard is showing.
+      Source: <a href="https://github.com/yohplala/acc_dual_mom/blob/main/docs/METHODOLOGY.md" style="color: var(--accent);">docs/METHODOLOGY.md</a>.
+    </div>
+    <nav>
+          <a href="index.html">Strategies</a>
+          <a href="us.html">US</a>
+          <a href="europe.html">Europe</a>
+          <a href="asia.html">Asia</a>
+          <a href="world.html">World</a>
+          <a href="correlations.html">Correlation</a>
+          <span class="nav-current">Methodology</span>
+          <a href="grid_search.html">Grid search</a>
+    </nav>
+
+    <div class="panel md">
+      <h1 id="methodology">Methodology</h1>
+<p>This document is the canonical reference for "what is the dashboard actually showing me". Strategies are scored, allocated, costed, and stitched in the <code>pea_momentum</code> framework using deliberate choices documented here. Change behaviour by editing <a href="../strategies.yaml"><code>strategies.yaml</code></a> and the asset YAML metadata, never the source code.</p>
+<div class="toc">
+<ul>
+<li><a href="#1-framework-label">1. Framework label</a></li>
+<li><a href="#2-strategy-modes">2. Strategy modes</a><ul>
+<li><a href="#21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</a></li>
+<li><a href="#22-scoring-pea_momentumscorepy">2.2 Scoring (pea_momentum/score.py)</a></li>
+<li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
+<li><a href="#231-top_per_region-selection-rule">2.3.1 top_per_region selection rule</a></li>
+</ul>
+</li>
+<li><a href="#24-allocation-rules-pea_momentumallocatepy">2.4 Allocation rules (pea_momentum/allocate.py)</a></li>
+<li><a href="#25-score-band-filter-pea_momentumbacktestpy">2.5 Score-band filter (pea_momentum/backtest.py)</a></li>
+</ul>
+</li>
+<li><a href="#3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (pea_momentum/stitching.py, pea_momentum/fetch.py)</a><ul>
+<li><a href="#31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</a></li>
+<li><a href="#32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (kind: synth)</a></li>
+<li><a href="#33-bad-data-scrubbing">3.3 Bad-data scrubbing</a></li>
+</ul>
+</li>
+<li><a href="#4-cost-model-pea_momentumbacktestpy">4. Cost model (pea_momentum/backtest.py)</a><ul>
+<li><a href="#41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</a></li>
+</ul>
+</li>
+<li><a href="#5-execution-timing">5. Execution timing</a><ul>
+<li><a href="#51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</a></li>
+</ul>
+</li>
+<li><a href="#6-performance-metrics-pea_momentummetricspy">6. Performance metrics (pea_momentum/metrics.py)</a><ul>
+<li><a href="#61-rf0-in-sharpe-sortino">6.1 rf=0 in Sharpe / Sortino</a></li>
+<li><a href="#62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</a></li>
+</ul>
+</li>
+<li><a href="#7-discovery-redundancy">7. Discovery &amp; redundancy</a></li>
+<li><a href="#8-glossary">8. Glossary</a></li>
+<li><a href="#9-pointers">9. Pointers</a></li>
+</ul>
+</div>
+<h2 id="1-framework-label">1. Framework label</h2>
+<p>The framework is <strong>rank-only momentum rotation</strong>. Selection is purely by score rank — there is no positive-momentum (<code>score &gt; 0</code>) floor and no absolute-momentum (vs safe-asset) gate. Every asset, including the safe asset when listed, competes on rank alone. References to "ADM" and "DM" elsewhere in the doc and dashboard label the <em>score recipe</em> (e.g. accelerated 1m/3m/6m mean vs single 12-month lookback), not any filter design.</p>
+<p>A separate <strong>score-band filter</strong> exists to suppress whipsaw swaps where the proposed entrant barely beats the proposed exit — see <a href="#25-score-band-filter-pea_momentumbacktestpy">Score-band filter</a> below. It is <em>not</em> a selection filter (it can't drop a slot to cash); it can only veto a swap and re-hold the prior winner.</p>
+<h2 id="2-strategy-modes">2. Strategy modes</h2>
+<p>Two execution modes coexist:</p>
+<ul>
+<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, weight them, and apply the score-band filter to any proposed swap. The cadence (<code>weekly_sunday</code>, <code>biweekly_sunday</code>, <code>monthly_first_sunday</code>, <code>quarterly_first_sunday</code>, <code>semiannual_first_sunday</code>) drives when this fires.</li>
+<li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nasdaq_lev_70_bh</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../pea_momentum/universe.py"><code>pea_momentum/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
+</ul>
+<h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
+<pre><code>raw close prices ─▶ score (per asset, including safe if listed)
+  ──▶ optional region pre-filter (selection_rule: top_per_region)
+  ──▶ top-N selection (by score, descending — sign-agnostic)
+  ──▶ weighting rule (equal_weight / score_proportional / regional_weights)
+  ──▶ largest-remainder rounding to granularity_pct
+  ──▶ rounding shortfall ─▶ residual_holder
+       (= safe asset if listed in `assets:`, else CASH 0%-return placeholder)
+  ──▶ score-band filter (suppress swap if entrant doesn't beat exit by ≥ band)
+</code></pre>
+<h3 id="22-scoring-pea_momentumscorepy">2.2 Scoring (<code>pea_momentum/score.py</code>)</h3>
+<p>Score at signal date <code>t</code>:</p>
+<pre><code>score(asset) = aggregate_over_lookbacks(close(t) / close(t - L) - 1)
+</code></pre>
+<ul>
+<li><strong>Lookbacks</strong> are configured in trading days via the <code>lookbacks_days</code> field. The default accelerated set is <code>[21, 63, 126]</code> (≈ 1, 3, 6 months). A per-strategy override <code>lookbacks_days: [252]</code> produces the single-12-month variant; <code>[126]</code> produces the single-6-month variant.</li>
+<li><strong>Aggregations</strong>: <code>mean</code> (default), <code>median</code> (robust to a single anomalous lookback), <code>min</code> (pessimistic — biases against assets with any single weak window). The latter two are sensitivity exhibits, not the recommended live setup.</li>
+</ul>
+<h3 id="23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</h3>
+<p>The top-N highest-scoring assets are picked <strong>regardless of the sign of their scores</strong>. Even in a synchronised bear regime where every score is negative, the strategy still allocates to the least-negative top-N — "hold the leader" rather than "go to cash via filter".</p>
+<p>Defensive behaviour comes from <strong>ranking</strong>, not filtering. List the safe asset (<code>cash_estr</code> — a low-volatility €STR-tracking sleeve) in a strategy's <code>assets:</code> and its small positive score will naturally win the top-N rank when every equity score collapses below zero, producing a 100%-safe defensive allocation organically. Strategies that don't list it forgo this defence and stay equity-allocated through bears (holding the least-bad equity sleeve).</p>
+<p>This is a deliberate methodology choice: defensive behaviour is opt-in via the universe composition, not enforced by the engine. A strategy always commits to a top-N allocation; if it lists the safe asset, the safe asset wins the rank during crashes — otherwise the strategy stays in the least-bad equity sleeve.</p>
+<h4 id="231-top_per_region-selection-rule">2.3.1 <code>top_per_region</code> selection rule</h4>
+<p>An optional pre-filter narrows the candidate pool to the top-N highest-scoring assets within each <code>dashboard_bucket</code> (<code>us</code> / <code>europe</code> / <code>asia</code>) before global selection. Configured per strategy:</p>
+<pre><code class="language-yaml">selection_rule: top_per_region
+top_n: 1                        # N picks per region (not global)
+</code></pre>
+<p>The filter step then trims the scored set to at most <code>top_n × #regions</code> entries, with <code>top_n</code> reinterpreted as "per region" rather than "global" inside this rule's context. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
+<h3 id="24-allocation-rules-pea_momentumallocatepy">2.4 Allocation rules (<code>pea_momentum/allocate.py</code>)</h3>
+<p>Three weighting paths are supported:</p>
+<ul>
+<li><strong><code>equal_weight</code></strong> (the framework default): <code>1/N</code> across the selected top-N assets. Canonical Antonacci-style weighting and the recommended live setup; robust to negative scores.</li>
+<li><strong><code>score_proportional</code></strong>: |score|-proportional weights with <strong>rank-based attribution</strong> — the highest-scoring asset always gets the largest weight, the lowest-scoring the smallest. For all-positive selections this collapses to the canonical <code>w_i = s_i / Σ s_j</code> formula (because score-rank == |score|-rank). For mixed-sign or all-negative selections (reachable now that the top-N has no filter), the formula stays well-defined: no negative weights (shorts), no inverted ranks. Concretely with selected scores <code>[-0.05, -0.10, -0.20]</code>, the pure formula <code>s/Σs = [0.143, 0.286, 0.571]</code> would give the <em>worst</em> score the largest weight; we instead assign the |score|-magnitudes by rank → <code>[0.571, 0.286, 0.143]</code> so the <em>least-crashing</em> asset gets the highest conviction. Used by <code>quad_growth</code> and <code>regional_pea</code>.</li>
+<li><strong><code>regional_weights</code></strong> (paired with <code>selection_rule: top_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
+</ul>
+<p>After raw weights are computed, they are rounded via <strong>largest-remainder (Hare quota)</strong> to integer multiples of <code>granularity_pct</code> (10% by default). Largest-remainder is exact-summing by construction, so when there are selected candidates the rounded weights total 100% — no residual.</p>
+<p>The <strong>residual holder</strong> catches both rounding shortfalls (rare under largest-remainder) and the early-history "no scores yet at this rebalance" path (when no asset has enough lookback to produce a signal):
+- the <strong>safe asset</strong> if it's listed in the strategy's <code>assets:</code> (residual earns €STR yield), OR
+- a <strong><code>cash</code></strong> placeholder (0%-return, no yield) when the strategy has no safe asset listed.</p>
+<p>The "list the safe asset explicitly to get the defensive crash behaviour" pattern is the YAML-honesty corollary: what you list is what you get.</p>
+<h3 id="25-score-band-filter-pea_momentumbacktestpy">2.5 Score-band filter (<code>pea_momentum/backtest.py</code>)</h3>
+<p>After the proposed weights are computed, a swap-suppression filter checks each proposed (entrant, exit) pair: if the entrant's score doesn't beat the matched exit's score by at least <code>momentum_delta_threshold_pct</code> (in score units = percentage points of mean ROC), the swap is rejected and the prior winner is re-held. The within-set score-prop reweighting still applies if any unrejected swap remains.</p>
+<p>The band is configured per strategy via <code>momentum_delta_threshold_pct:</code> — explicit <code>0</code> disables the filter; <code>None</code> inherits the shared default (<code>2.0</code> in the current <code>strategies.yaml</code>). Per-strategy values in the live lineup range from <code>0</code> (<code>quad_growth</code> runs band-off) to <code>8.5</code> (<code>tri_us_em_jp</code> at weekly cadence — high-noise signal needs the deepest dampener) — see each strategy's comment block for the rationale and grid-sweep evidence.</p>
+<p><strong>Region-local pairing</strong>: when <code>selection_rule: top_per_region</code> is set, the band filter pairs entrants and exits <em>within each region</em> rather than globally. Without this, a US entrant could be matched against (say) an Asia exit; if the cross-region pair is rejected, the wrong region's exit gets re-held and the per-region cardinality invariant breaks. The fix is opaque to the canonical <code>top_n</code> rule (no change in pairing for global selection).</p>
+<p>The filter is documented as a separate concept from selection because it can only veto a swap, never drop a slot to cash. A strategy that has rejected its only swap holds the prior winner exactly; turnover for that rebalance is zero, but the equity stays equity-allocated.</p>
+<h2 id="3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (<code>pea_momentum/stitching.py</code>, <code>pea_momentum/fetch.py</code>)</h2>
+<p>Most PEA-eligible UCITS ETFs in the active universe launched between 2014 and 2024, so a 2008-onward backtest needs pre-launch history. The splice approach:</p>
+<ol>
+<li>Fetch the live ETF series (post-inception only).</li>
+<li>Fetch the configured <code>proxy_chain</code> — an ordered list of <code>{ticker, kind}</code> pairs, <strong>cleanest first</strong>. A length-1 chain is the standard single-stage form; longer chains layer extensions (see <a href="#31-multi-stage-proxy-chain">Multi-stage proxy chain</a>). Supported <code>kind</code> values: <code>eur_tr</code> (EUR-quoted, no FX), <code>usd_tr</code> (USD-quoted, EUR-converted via ECB EUR/USD), <code>synth</code> (recipe name resolved against <code>_SYNTH_PROXY_RECIPES</code>; see <a href="#32-synthetic-proxy-recipes-kind-synth">Synthetic-proxy recipes</a>).</li>
+<li>If a chain element is USD-denominated (<code>kind: usd_tr</code>), convert to EUR via the daily ECB EUR/USD reference rate.</li>
+<li><strong>Rescale the proxy levels</strong> so the proxy's level on the inception date matches the ETF's level on that date. Pre-inception levels are walked back from there using the proxy's own returns.</li>
+<li>Concatenate: scaled proxy for <code>date &lt; inception</code>, ETF for <code>date &gt;= inception</code>. The <code>source</code> column on <code>prices.parquet</code> records provenance (<code>yfinance</code> vs <code>stitched_proxy</code>).</li>
+</ol>
+<p>The result is continuous in level (no jump on the splice date) and continuous in return.</p>
+<h3 id="31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</h3>
+<p>Some assets benefit from chaining: a methodologically-pure proxy with shorter history (cleanest), then a less-clean one with longer history that extends only the pre-handoff segment. The <code>proxy_chain</code> is <strong>cleanest first</strong>: each successor is level-rescaled to match its predecessor at the predecessor's first available date. The chain extends history only as much as the dirtier proxies can — without contaminating the clean recent segment.</p>
+<p>A few representative chains in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>:</p>
+<ul>
+<li><code>world</code> (DCAM.PA): <code>IWDA.AS</code> (cleanest, EUR Acc UCITS since 2009-09-25) → <code>IWRD.L</code> (same fund, USD Dist share class, +9 months back to 2009-01-02) → <code>ACWI</code> (broader MSCI ACWI, ~12% EM contamination, extends to 2008-03-28 capturing the Lehman peak).</li>
+<li><code>em_asia</code> (PAASI.PA): <code>EEMA</code> (pure MSCI EM Asia since 2012-02-09) → <code>AAXJ</code> (Asia ex-Japan, ~10% developed-Asia drift, extends to 2008-08-15).</li>
+<li><code>eurostoxx50</code> (C50.PA): <code>CSX5.AS</code> (iShares Core EUR Acc since 2014-04-28, low TER same as live) → <code>MSE.PA</code> (Amundi II share class, higher TER, extends to 2008-01-02).</li>
+<li><code>topix_hedged</code> (PTPXH.PA): <code>IJPE.L</code> (real EUR-hedged Japan ETF since 2010-09-30) → <code>eur_hedged_jp</code> (synthetic recipe — see below).</li>
+<li><code>world_lev_2x</code> (LVWC.DE, live since 2025-10): <code>lev2x_cw8_pa_msci_world</code> (synthetic 2x daily-leveraged MSCI World) → <code>lev2x_iusa_as_msci_usa</code> (US-only fallback for the deepest pre-history segment).</li>
+</ul>
+<h3 id="32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (<code>kind: synth</code>)</h3>
+<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../pea_momentum/fetch.py"><code>pea_momentum/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
+<p>Currently registered:</p>
+<ul>
+<li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1996. Construction:</li>
+</ul>
+<p><code>L_synth(t) = (EWJ(t) × USDJPY(t)) / (EWJ(0) × USDJPY(0))
+             × (estr(t) / estr(0))</code></p>
+<p>The product <code>EWJ_USD × USDJPY</code> algebraically strips out the JPY/USD FX exposure baked into the unhedged EWJ ETF, leaving a pure JPY-denominated equity level. The <code>estr / estr(0)</code> term adds the EUR short-rate compounding (with EONIA splice pre-2019), which is the carry a EUR investor earns by selling JPY forward to hedge. The carry term implicitly assumes the JPY short rate is zero — true pre-2010 (BOJ ZIRP since 1999) which is exactly the period the chain uses the synthetic for. <strong>USDJPY source</strong>: derived as <code>EURJPY / EURUSD</code> from the ECB Data Portal rather than yfinance <code>USDJPY=X</code> — Yahoo's USDJPY series shares the same multi-week mid-2008 gaps as <code>EURUSD=X</code> (no fixings between 2008-08-08 and 2008-08-26, in particular), which would inner-join out 18 days at the start of the active backtest window. ECB EUR/JPY and EUR/USD are continuous on TARGET-2 working days since 1999-01-04, so the derived USDJPY is gap-free.</p>
+<ul>
+<li>
+<p><strong><code>eur_hedged_sp500</code></strong> — synthesises EUR-hedged S&amp;P 500 back to 2008-01-02 by stripping the USD/EUR FX from <code>^GSPC</code> levels and adding ECB €STR financing carry. Used in the <code>sp500_hedged</code> and <code>sp500_scr_hed</code> chains as the deepest fallback.</p>
+</li>
+<li>
+<p><strong><code>lev2x_iusa_as_msci_usa</code></strong> and <strong><code>lev2x_cw8_pa_msci_world</code></strong> — synthesise 2x daily-leveraged variants of MSCI USA and MSCI World back to 2008-01-02. Construction:</p>
+</li>
+</ul>
+<p><code>r_lev_t  = 2 * r_und_t - drag_t
+  drag_t   = TER * dcal_t / 365.25                  (calendar-day TER accrual)
+           + (€STR_pct / 100) * dcal_t / 360         (ECB ACT/360 financing leg)
+  L(t)     = L(t-1) * (1 + r_lev_t)                  (compounded)</code></p>
+<p><code>dcal_t</code> = calendar days elapsed since the previous observation. TER follows ACT/365.25 (ETFs accrue management fees on calendar days); €STR follows the ECB ACT/360 convention. Used for <code>us_lev_msci_2x</code>, <code>us_lev_nasdaq_2x</code>, and the <code>world_lev_2x</code> deep-history chain.</p>
+<p>Rows on <code>prices.parquet</code> for synthetic segments carry the standard <code>source = "stitched_proxy"</code> provenance — the chain mechanism doesn't differentiate synth from yfinance proxies once the EUR <code>[date, close]</code> series is built.</p>
+<h3 id="33-bad-data-scrubbing">3.3 Bad-data scrubbing</h3>
+<p>yfinance has been observed to return spurious "round-trip" closes (price drops 50%, recovers next day, sometimes over multiple days). These are detected at two layers:</p>
+<ol>
+<li><strong>Splice-time scrub</strong> (<code>stitching._scrub_round_trip_spikes</code>) on each individual <code>[date, close]</code> series before concatenation. Catches single-day spikes plus the FX-channel spikes that propagate across every cross-currency proxy.</li>
+<li><strong>Backtest-time scrub</strong> (<code>stitching.scrub_long_format</code>) on the full long-format <code>prices.parquet</code>. Catches multi-day round-trip patterns up to 3 days, plus sustained "flat run" forward-fill artefacts of length ≥ 3 trading days.</li>
+</ol>
+<p>Both layers null the corrupt close so the daily-return chain shows 0% on the bad day, then forward-fill replaces it with the previous valid close. Genuine non-round-trip outliers above the 30% plausibility ceiling raise <code>FetchError</code> for human investigation.</p>
+<p>A small hand-curated dictionary of known step-correction patches (<code>fetch._KNOWN_BAD_UNDERLYING_DAYS</code>) handles non-V-shape errors that the round-trip scrubber can't catch — currently one entry, for <code>IUSA.AS</code>'s 2009-01-02 spurious -27% step.</p>
+<h2 id="4-cost-model-pea_momentumbacktestpy">4. Cost model (<code>pea_momentum/backtest.py</code>)</h2>
+<p>Per-rebalance cost is computed <strong>per-asset</strong>, not as a flat rate on aggregate turnover:</p>
+<pre><code>cost_at_fill = Σ_i |delta_w_i| * (per_trade_pct/100 + est_spread_bps_i / 2 / 10000)
+</code></pre>
+<p>Charged as a negative return on the fill day.</p>
+<ul>
+<li><code>per_trade_pct</code> (shared, currently <code>0.05%</code> one-way) covers the broker commission (Boursorama / Interactive Brokers tier).</li>
+<li><code>est_spread_bps</code> per asset is the <strong>estimated round-trip bid-ask spread</strong>. Half of it is added per traded notional (the strategy buys at ask and sells at bid).</li>
+</ul>
+<p>Currently configured on the active assets with explicit spreads (see <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>):</p>
+<table>
+<thead>
+<tr>
+<th>Asset</th>
+<th>Spread (bps)</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sp500</code> (PSP5.PA)</td>
+<td>5</td>
+<td>High-AUM flagship, tight book</td>
+</tr>
+<tr>
+<td><code>eurostoxx50</code> (C50.PA)</td>
+<td>5</td>
+<td>Eurozone large-cap flagship</td>
+</tr>
+<tr>
+<td><code>world</code> (DCAM.PA)</td>
+<td>10</td>
+<td>Mid sleeve, recent launch</td>
+</tr>
+<tr>
+<td><code>msci_europe</code> (PCEU.PA)</td>
+<td>10</td>
+<td>EU-broad sleeve, mid AUM</td>
+</tr>
+<tr>
+<td><code>eu_banks</code> (BNK.PA)</td>
+<td>20</td>
+<td>Sector ETF, mid liquidity</td>
+</tr>
+<tr>
+<td><code>em_asia</code> (PAASI.PA)</td>
+<td>25</td>
+<td>EM exposure, thinner book</td>
+</tr>
+<tr>
+<td><code>russell2000</code> (RS2K.PA)</td>
+<td>30</td>
+<td>Satellite, small-cap</td>
+</tr>
+<tr>
+<td><code>emu_small</code> (MMS.PA)</td>
+<td>30</td>
+<td>EU small-cap, satellite liquidity</td>
+</tr>
+<tr>
+<td><code>topix</code> (PTPXE.PA)</td>
+<td>30</td>
+<td>Satellite, low AUM</td>
+</tr>
+<tr>
+<td><code>topix_hedged</code> (PTPXH.PA)</td>
+<td>30</td>
+<td>EUR-hedged variant, mid liquidity</td>
+</tr>
+</tbody>
+</table>
+<p>Assets without an explicit <code>est_spread_bps</code> use <code>0</code> — defensible for the broad regional pool which is exercised quarterly with low turnover, but worth refreshing if a thinly-traded sleeve gets onto an active rotation strategy.</p>
+<h3 id="41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</h3>
+<p><code>yfinance</code>'s <code>Ticker.info["bid"]/["ask"]</code> is intraday-only and frequently null for thinly-traded EU tickers. Boursorama scraping is not API-stable. A static per-asset estimate is the only honest backtesting approach — refresh sporadically as the live spreads shift.</p>
+<h2 id="5-execution-timing">5. Execution timing</h2>
+<p>All rotation strategies share the same Sunday-anchored cadence:</p>
+<ul>
+<li><strong>Rebalance day R</strong> is a Sunday (the rotation cadence determines which ones).</li>
+<li><strong>Signal date S = R - 2d</strong>: the preceding Friday's close is what scoring sees.</li>
+<li><strong>Fill date F = R + 1d</strong>: the following Monday's close is the assumed execution price. Costs are charged on F as a negative return; new weights take effect from F+1.</li>
+</ul>
+<p>This guarantees no look-ahead and matches the realistic case for a French PEA holder reviewing weekly signals over the weekend.</p>
+<h3 id="51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</h3>
+<p>Every cadence rebalances <strong>unconditionally on the first Sunday of the backtest range</strong>, even when that Sunday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_first_sunday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Sunday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct first Sundays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_sunday</code>, <code>quarterly_first_sunday</code>, or <code>semiannual_first_sunday</code> strategy, all of them have their first rebalance on the same day-1 Sunday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
+<p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Sunday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Sunday — alignment is achievable only when the data permits.</p>
+<h2 id="6-performance-metrics-pea_momentummetricspy">6. Performance metrics (<code>pea_momentum/metrics.py</code>)</h2>
+<p>Computed on the daily equity curve plus the rebalance log:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cagr</code></td>
+<td><code>(equity[-1] / equity[0]) ** (1/years) - 1</code></td>
+</tr>
+<tr>
+<td><code>vol_ann</code></td>
+<td>Daily-return std × √252</td>
+</tr>
+<tr>
+<td><code>sharpe</code></td>
+<td><code>mean_daily_return / vol_daily × √252</code>. <strong>rf=0</strong>: see note below.</td>
+</tr>
+<tr>
+<td><code>sortino</code></td>
+<td>Same but only counts downside daily returns in the volatility denominator. <code>None</code> when there are no down-days (denominator is zero) — undefined ratio, rendered as "—".</td>
+</tr>
+<tr>
+<td><code>max_drawdown</code></td>
+<td>Worst peak-to-trough decline</td>
+</tr>
+<tr>
+<td><code>calmar</code></td>
+<td><code>cagr / |max_drawdown|</code>. <code>None</code> when MaxDD is zero — undefined ratio, rendered as "—".</td>
+</tr>
+<tr>
+<td><code>hit_rate</code></td>
+<td>Fraction of trading days with positive return — correlated with vol more than skill</td>
+</tr>
+<tr>
+<td><code>rebalance_hit_rate</code></td>
+<td>Fraction of rebalance intervals where equity at the next rebalance is above this one</td>
+</tr>
+<tr>
+<td><code>turnover_per_year</code></td>
+<td>Annualised L1 turnover (sum of per-rebalance turnovers / years)</td>
+</tr>
+<tr>
+<td><code>realloc_pct</code></td>
+<td>Fraction of rebalance assessments that produced an actual reallocation (turnover &gt; 0). Lower = more rebalances re-confirmed the prior holdings or were vetoed by the score-band filter.</td>
+</tr>
+<tr>
+<td><code>final_equity</code></td>
+<td>Last value of the equity curve (1.0 at backtest start, growth multiple at end)</td>
+</tr>
+<tr>
+<td><code>total_cost</code></td>
+<td>Sum of per-rebalance costs over the run</td>
+</tr>
+<tr>
+<td><code>avg_corr</code></td>
+<td>Average pairwise daily-return correlation across the strategy's risky universe</td>
+</tr>
+</tbody>
+</table>
+<h3 id="61-rf0-in-sharpe-sortino">6.1 <code>rf=0</code> in Sharpe / Sortino</h3>
+<p>The framework already absorbs the risk-free rate at the strategy level: a strategy that lists the safe asset in its <code>assets:</code> will rotate into it during crashes (€STR yield wins the rank when equity scores collapse), and one that doesn't list it falls through to a 0%-return CASH placeholder. Subtracting <code>rf</code> again at the metric layer would double-count the safe-asset return for safe-listing strategies. The dashboard's Sharpe is therefore directly comparable across rotation strategies with similar safe-asset treatment, but slightly biased upward when comparing safe-listing strategies against pure-equity ones.</p>
+<h3 id="62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</h3>
+<p>Per-day hit rate is near-meaningless for a slow rotation strategy — sample size is dominated by quiet drift days. The per-rebalance hit rate ("did the equity at the next rebalance exceed the equity at this one?") is the meaningful skill measure: sample size = number of rebalances, and that's exactly the bet the strategy is making each cycle.</p>
+<h2 id="7-discovery-redundancy">7. Discovery &amp; redundancy</h2>
+<p>The broad PEA-eligible Amundi universe in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> is fetched independently and used for correlation-matrix exploration. Two diagnostics are produced:</p>
+<ul>
+<li><strong>Complete-link clustering</strong> (<code>correlations.find_groups</code>) groups assets where <em>every</em> member-to-member daily correlation exceeds the threshold (default 0.90). This avoids the chaining property of single-link clustering, where two weakly correlated assets get lumped together via a high-correlation bridge pair.</li>
+<li><strong>Best-in-group representative</strong> (<code>correlations.best_in_group</code>) picks the <strong>lowest-TER</strong> member of each group. TER is decided ex-ante, so the choice is immune to in-sample selection bias — unlike a 1-year CAGR ranking, which would be momentum-on-momentum and defeat the prospective spirit of dual momentum.</li>
+</ul>
+<p><code>diagnostics.diagnose_strategies</code> then cross-references each strategy's asset slice against these groups and emits two diagnostic types: <strong><code>remove</code></strong> (the strategy uses 2+ assets in the same redundancy group — keep one, drop the others) and <strong><code>replace</code></strong> (the strategy uses an asset that isn't the lowest-TER pick in its group).</p>
+<h2 id="8-glossary">8. Glossary</h2>
+<p>For future readers: the canonical vocabulary used across YAML, code, and dashboard. If a term doesn't appear here, it's not part of the framework's API surface.</p>
+<table>
+<thead>
+<tr>
+<th>Concept</th>
+<th>YAML</th>
+<th>Code field</th>
+<th>Dashboard label</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Score lookback windows (trading days)</td>
+<td><code>lookbacks_days: [21, 63, 126]</code></td>
+<td><code>Strategy.lookbacks_days</code>, <code>Scoring.lookbacks_days</code></td>
+<td><code>Scoring</code> (e.g. <code>ADM 1m/3m/6m mean</code>, <code>DM 12m</code>)</td>
+<td>Days, not months. 21 ≈ 1 month.</td>
+</tr>
+<tr>
+<td>Score aggregation across lookbacks</td>
+<td><code>aggregation: mean</code></td>
+<td><code>Scoring.aggregation</code></td>
+<td>(folded into Scoring label)</td>
+<td><code>mean</code> / <code>median</code> / <code>min</code></td>
+</tr>
+<tr>
+<td>Allocation weighting rule</td>
+<td><code>rule: equal_weight</code> (shared) or <code>allocation_rule: score_proportional</code> (per strategy)</td>
+<td><code>Allocation.rule</code>, <code>Strategy.allocation_rule</code></td>
+<td><code>Allocation</code> (e.g. <code>top-3 equal</code>, <code>top-1 score-prop</code>)</td>
+<td><code>equal_weight</code> is canonical; <code>score_proportional</code> is the opt-in sensitivity exhibit.</td>
+</tr>
+<tr>
+<td>Selection rule</td>
+<td><code>selection_rule: top_n</code> (default) or <code>top_per_region</code></td>
+<td><code>Strategy.selection_rule</code></td>
+<td>(folded into Allocation label)</td>
+<td><code>top_per_region</code> reinterprets <code>top_n</code> as "N per region" (filter to top-N within each <code>dashboard_bucket</code> first).</td>
+</tr>
+<tr>
+<td>Number of selected sleeves</td>
+<td><code>top_n: 3</code></td>
+<td><code>Strategy.top_n</code></td>
+<td>(folded into Allocation label)</td>
+<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Meaning depends on <code>selection_rule</code>: global top-N by default, or per-region top-N when <code>top_per_region</code>.</td>
+</tr>
+<tr>
+<td>Per-region static weights</td>
+<td><code>regional_weights: {us: 0.6, europe: 0.1, asia: 0.3}</code></td>
+<td><code>Strategy.regional_weights</code></td>
+<td><code>Allocation</code> shows <code>static</code></td>
+<td>Paired with <code>top_per_region</code>; each region's weight is split equally among its picks.</td>
+</tr>
+<tr>
+<td>Score-band filter (whipsaw suppression)</td>
+<td><code>momentum_delta_threshold_pct: 5.0</code> (per strategy) or shared default</td>
+<td><code>Strategy.momentum_delta_threshold_pct</code>, <code>Scoring.momentum_delta_threshold_pct</code></td>
+<td><code>Band</code> column on the Strategies table</td>
+<td>Suppresses a swap when the entrant doesn't beat the matched exit by at least the configured margin (in score units = pp of mean ROC). <code>0</code> disables. Empty (—) for buy-and-hold.</td>
+</tr>
+<tr>
+<td>Rebalance cadence</td>
+<td><code>rebalance: monthly_first_sunday</code></td>
+<td><code>Strategy.rebalance</code></td>
+<td><code>Cadence</code> (e.g. <code>monthly</code>, <code>weekly</code>, <code>biweekly</code>, <code>quarterly</code>, <code>semiannual</code>)</td>
+<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Sunday-anchored only.</td>
+</tr>
+<tr>
+<td>Strategy mode</td>
+<td><code>mode: rotation</code> (default) or <code>mode: buy_and_hold</code></td>
+<td><code>Strategy.mode</code></td>
+<td>Reflected in <code>Scoring</code> label (<code>Buy &amp; Hold</code>)</td>
+<td></td>
+</tr>
+<tr>
+<td>Static buy-and-hold weights</td>
+<td><code>static_weights: {world: 0.6, cash_estr: 0.4}</code></td>
+<td><code>Strategy.static_weights</code></td>
+<td>(folded into <code>B&amp;H static</code> label)</td>
+<td>Optional; absent ⇒ equal-weight. Keys must match <code>assets:</code> exactly.</td>
+</tr>
+<tr>
+<td>Pre-selection filter</td>
+<td>(n/a)</td>
+<td>(n/a)</td>
+<td>—</td>
+<td>Selection is rank-only — there is no <code>score &gt; 0</code> floor and no absolute-momentum gate. The score-band filter is not a selection filter either (it only vetoes swaps, never drops a slot to cash).</td>
+</tr>
+<tr>
+<td>Safe asset</td>
+<td><code>synth_proxy: estr</code> on a regular catalog entry (currently <code>cash_estr</code>)</td>
+<td><code>Config.safe_asset</code> (a regular <code>Asset</code>), <code>Config.safe_asset_id</code></td>
+<td><code>safe</code> chip in the <strong>Cash</strong> column</td>
+<td>Treated like any other asset under the rank-only methodology — list it in a strategy's <code>assets:</code> to give it a chance to win the top-N during crashes.</td>
+</tr>
+<tr>
+<td>Cash residual</td>
+<td>(n/a)</td>
+<td><code>allocate.CASH_KEY</code></td>
+<td><code>cash</code> chip</td>
+<td>0%-return placeholder for rounding-shortfall residuals (rare under largest-remainder) and the early-history "no scores yet at this rebalance" path when the safe asset isn't listed.</td>
+</tr>
+<tr>
+<td>Per-asset bid-ask spread (bps)</td>
+<td><code>est_spread_bps: 5</code></td>
+<td><code>Asset.est_spread_bps</code></td>
+<td>(folded into <code>total_cost</code>)</td>
+<td>Half-spread added per traded notional.</td>
+</tr>
+<tr>
+<td>Asset region bucket</td>
+<td>(n/a — derived from <code>category:</code>)</td>
+<td><code>discover.dashboard_bucket(Asset.category)</code></td>
+<td>Drives the <strong>World / US / Europe / Asia</strong> signal-table columns.</td>
+<td>Coarse buckets: <code>world</code> / <code>us</code> / <code>europe</code> (incl. eurozone/france/germany) / <code>asia</code> (incl. japan/em_asia/em). Cash-* categories ⇒ <code>cash</code> column.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-pointers">9. Pointers</h2>
+<ul>
+<li><a href="../strategies.yaml"><code>strategies.yaml</code></a> — universe, shared scoring/allocation/cost knobs, per-strategy entries</li>
+<li><a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> — broad discovery catalogue</li>
+<li><a href="../pea_momentum/score.py"><code>pea_momentum/score.py</code></a></li>
+<li><a href="../pea_momentum/allocate.py"><code>pea_momentum/allocate.py</code></a></li>
+<li><a href="../pea_momentum/backtest.py"><code>pea_momentum/backtest.py</code></a></li>
+<li><a href="../pea_momentum/stitching.py"><code>pea_momentum/stitching.py</code></a></li>
+<li><a href="../pea_momentum/metrics.py"><code>pea_momentum/metrics.py</code></a></li>
+<li><a href="../pea_momentum/correlations.py"><code>pea_momentum/correlations.py</code></a></li>
+</ul>
+    </div>
+
+    <footer>
+      <p>
+        Rendered from <code>docs/METHODOLOGY.md</code> with the Python
+        <code>markdown</code> library. The repo's source markdown remains
+        the canonical version; this page mirrors it for in-dashboard reading.
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
