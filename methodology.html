@@ -100,27 +100,27 @@
 
     <div class="panel md">
       <h1 id="methodology">Methodology</h1>
-<p>This document is the canonical reference for "what is the dashboard actually showing me". Strategies are scored, allocated, costed, and stitched in the <code>pea_momentum</code> framework using deliberate choices documented here. Change behaviour by editing <a href="../strategies.yaml"><code>strategies.yaml</code></a> and the asset YAML metadata, never the source code.</p>
+<p>This document is the canonical reference for "what is the dashboard actually showing me". Strategies are scored, allocated, costed, and stitched in the <code>etfmom</code> framework using deliberate choices documented here. Change behaviour by editing <a href="../strategies.yaml"><code>strategies.yaml</code></a> and the asset YAML metadata, never the source code.</p>
 <div class="toc">
 <ul>
 <li><a href="#1-framework-label">1. Framework label</a></li>
 <li><a href="#2-strategy-modes">2. Strategy modes</a><ul>
 <li><a href="#21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</a></li>
-<li><a href="#22-scoring-pea_momentumscorepy">2.2 Scoring (pea_momentum/score.py)</a></li>
+<li><a href="#22-scoring-etfmomscorepy">2.2 Scoring (etfmom/score.py)</a></li>
 <li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
 <li><a href="#231-top_per_region-selection-rule">2.3.1 top_per_region selection rule</a></li>
 </ul>
 </li>
-<li><a href="#24-allocation-rules-pea_momentumallocatepy">2.4 Allocation rules (pea_momentum/allocate.py)</a></li>
+<li><a href="#24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (etfmom/allocate.py)</a></li>
 </ul>
 </li>
-<li><a href="#3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (pea_momentum/stitching.py, pea_momentum/fetch.py)</a><ul>
+<li><a href="#3-stitching-etfmomstitchingpy-etfmomfetchpy">3. Stitching (etfmom/stitching.py, etfmom/fetch.py)</a><ul>
 <li><a href="#31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</a></li>
 <li><a href="#32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (kind: synth)</a></li>
 <li><a href="#33-bad-data-scrubbing">3.3 Bad-data scrubbing</a></li>
 </ul>
 </li>
-<li><a href="#4-cost-model-pea_momentumbacktestpy">4. Cost model (pea_momentum/backtest.py)</a><ul>
+<li><a href="#4-cost-model-etfmombacktestpy">4. Cost model (etfmom/backtest.py)</a><ul>
 <li><a href="#41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</a></li>
 </ul>
 </li>
@@ -128,7 +128,7 @@
 <li><a href="#51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</a></li>
 </ul>
 </li>
-<li><a href="#6-performance-metrics-pea_momentummetricspy">6. Performance metrics (pea_momentum/metrics.py)</a><ul>
+<li><a href="#6-performance-metrics-etfmommetricspy">6. Performance metrics (etfmom/metrics.py)</a><ul>
 <li><a href="#61-rf0-in-sharpe-sortino">6.1 rf=0 in Sharpe / Sortino</a></li>
 <li><a href="#62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</a></li>
 </ul>
@@ -144,7 +144,7 @@
 <p>Two execution modes coexist:</p>
 <ul>
 <li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_sunday</code>, <code>biweekly_sunday</code>, <code>monthly_first_sunday</code>, <code>quarterly_first_sunday</code>, <code>semiannual_first_sunday</code>) drives when this fires.</li>
-<li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nasdaq_70_bh_lev</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../pea_momentum/universe.py"><code>pea_momentum/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
+<li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nas_70_bh_lev</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../etfmom/universe.py"><code>etfmom/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
 </ul>
 <h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
 <pre><code>raw close prices ─▶ score (per asset, including safe if listed)
@@ -155,7 +155,7 @@
   ──▶ rounding shortfall ─▶ residual_holder
        (= safe asset if listed in `assets:`, else CASH 0%-return placeholder)
 </code></pre>
-<h3 id="22-scoring-pea_momentumscorepy">2.2 Scoring (<code>pea_momentum/score.py</code>)</h3>
+<h3 id="22-scoring-etfmomscorepy">2.2 Scoring (<code>etfmom/score.py</code>)</h3>
 <p>Score at signal date <code>t</code>:</p>
 <pre><code>score(asset) = aggregate_over_lookbacks(close(t) / close(t - L) - 1)
 </code></pre>
@@ -173,7 +173,7 @@
 top_n: 1                        # N picks per region (not global)
 </code></pre>
 <p>The filter step then trims the scored set to at most <code>top_n × #regions</code> entries, with <code>top_n</code> reinterpreted as "per region" rather than "global" inside this rule's context. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
-<h3 id="24-allocation-rules-pea_momentumallocatepy">2.4 Allocation rules (<code>pea_momentum/allocate.py</code>)</h3>
+<h3 id="24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (<code>etfmom/allocate.py</code>)</h3>
 <p>Three weighting paths are supported:</p>
 <ul>
 <li><strong><code>equal_weight</code></strong> (the framework default): <code>1/N</code> across the selected top-N assets. Canonical Antonacci-style weighting and the recommended live setup; robust to negative scores.</li>
@@ -185,7 +185,7 @@ top_n: 1                        # N picks per region (not global)
 - the <strong>safe asset</strong> if it's listed in the strategy's <code>assets:</code> (residual earns €STR yield), OR
 - a <strong><code>cash</code></strong> placeholder (0%-return, no yield) when the strategy has no safe asset listed.</p>
 <p>The "list the safe asset explicitly to get the defensive crash behaviour" pattern is the YAML-honesty corollary: what you list is what you get.</p>
-<h2 id="3-stitching-pea_momentumstitchingpy-pea_momentumfetchpy">3. Stitching (<code>pea_momentum/stitching.py</code>, <code>pea_momentum/fetch.py</code>)</h2>
+<h2 id="3-stitching-etfmomstitchingpy-etfmomfetchpy">3. Stitching (<code>etfmom/stitching.py</code>, <code>etfmom/fetch.py</code>)</h2>
 <p>Most PEA-eligible UCITS ETFs in the active universe launched between 2014 and 2024, so a 2008-onward backtest needs pre-launch history. The splice approach:</p>
 <ol>
 <li>Fetch the live ETF series (post-inception only).</li>
@@ -203,10 +203,13 @@ top_n: 1                        # N picks per region (not global)
 <li><code>em_asia</code> (PAASI.PA): <code>EEMA</code> (pure MSCI EM Asia since 2012-02-09) → <code>AAXJ</code> (Asia ex-Japan, ~10% developed-Asia drift, extends to 2008-08-15).</li>
 <li><code>eurostoxx50</code> (C50.PA): <code>CSX5.AS</code> (iShares Core EUR Acc since 2014-04-28, low TER same as live) → <code>MSE.PA</code> (Amundi II share class, higher TER, extends to 2008-01-02).</li>
 <li><code>topix_hedged</code> (PTPXH.PA): <code>IJPE.L</code> (real EUR-hedged Japan ETF since 2010-09-30) → <code>eur_hedged_jp</code> (synthetic recipe — see below).</li>
-<li><code>world_lev_2x</code> (LVWC.DE, live since 2025-10): <code>lev2x_cw8_pa_msci_world</code> (synthetic 2x daily-leveraged MSCI World) → <code>lev2x_iusa_as_msci_usa</code> (US-only fallback for the deepest pre-history segment).</li>
+<li><code>world_lev_2x</code> (LVWC.DE, live since 2025-10): <code>lev2x_cw8_pa_msci_world</code> (synthetic 2x daily-leveraged MSCI World, EUR-native via CW8.PA since 2009-06-16) → <code>lev2x_iusa_as_msci_usa</code> (US-only fallback for the deepest pre-history segment, 2008-01-02 → 2009-06-15).</li>
 </ul>
+<blockquote>
+<p><strong>Caveat — interpreting the world_lev_2x GFC drawdown.</strong> The 2008-08 → 2009-03 trough on <code>world_lev_2x</code> (≈ -73.6% from the 2008-08-15 backtest start) comes from the <strong><code>lev2x_iusa_as_msci_usa</code> bridge proxy</strong>, not from a true 2x-MSCI-World series — CW8.PA's first close is 2009-06-16, so the GFC trough is literally MSCI-USA 2x. MSCI-USA fell harder than the Nasdaq-100 in 2008 (financials-heavy index vs already-mean-reverted-tech), which is why <code>world_lev_2x</code> shows a deeper MaxDD than <code>us_lev_nasdaq_2x</code> (-66.3%) over the same window. A naive 2× of unlevered MSCI-World daily returns would also produce ≈ -82% over the equivalent window — TER + financing aren't inflating it. Read <code>world_lev_2x</code> MaxDD pre-2009-06-16 as a property of the bridge, not of MSCI World itself.</p>
+</blockquote>
 <h3 id="32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (<code>kind: synth</code>)</h3>
-<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../pea_momentum/fetch.py"><code>pea_momentum/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
+<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../etfmom/fetch.py"><code>etfmom/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
 <p>Currently registered:</p>
 <ul>
 <li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1996. Construction:</li>
@@ -236,7 +239,7 @@ top_n: 1                        # N picks per region (not global)
 </ol>
 <p>Both layers null the corrupt close so the daily-return chain shows 0% on the bad day, then forward-fill replaces it with the previous valid close. Genuine non-round-trip outliers above the 30% plausibility ceiling raise <code>FetchError</code> for human investigation.</p>
 <p>A small hand-curated dictionary of known step-correction patches (<code>fetch._KNOWN_BAD_UNDERLYING_DAYS</code>) handles non-V-shape errors that the round-trip scrubber can't catch — currently one entry, for <code>IUSA.AS</code>'s 2009-01-02 spurious -27% step.</p>
-<h2 id="4-cost-model-pea_momentumbacktestpy">4. Cost model (<code>pea_momentum/backtest.py</code>)</h2>
+<h2 id="4-cost-model-etfmombacktestpy">4. Cost model (<code>etfmom/backtest.py</code>)</h2>
 <p>Per-rebalance cost is computed <strong>per-asset</strong>, not as a flat rate on aggregate turnover:</p>
 <pre><code>cost_at_fill = Σ_i |delta_w_i| * (per_trade_pct/100 + est_spread_bps_i / 2 / 10000)
 </code></pre>
@@ -321,7 +324,7 @@ top_n: 1                        # N picks per region (not global)
 <h3 id="51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</h3>
 <p>Every cadence rebalances <strong>unconditionally on the first Sunday of the backtest range</strong>, even when that Sunday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_first_sunday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Sunday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct first Sundays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_sunday</code>, <code>quarterly_first_sunday</code>, or <code>semiannual_first_sunday</code> strategy, all of them have their first rebalance on the same day-1 Sunday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
 <p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Sunday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Sunday — alignment is achievable only when the data permits.</p>
-<h2 id="6-performance-metrics-pea_momentummetricspy">6. Performance metrics (<code>pea_momentum/metrics.py</code>)</h2>
+<h2 id="6-performance-metrics-etfmommetricspy">6. Performance metrics (<code>etfmom/metrics.py</code>)</h2>
 <p>Computed on the daily equity curve plus the rebalance log:</p>
 <table>
 <thead>
@@ -463,7 +466,7 @@ top_n: 1                        # N picks per region (not global)
 <td><code>mode: rotation</code> (default) or <code>mode: buy_and_hold</code></td>
 <td><code>Strategy.mode</code></td>
 <td>Reflected in <code>Scoring</code> label (<code>Buy &amp; Hold</code>)</td>
-<td></td>
+<td>Buy-and-hold uses <code>static_weights:</code> (or equal-weight) and no rebalance.</td>
 </tr>
 <tr>
 <td>Static buy-and-hold weights</td>
@@ -513,12 +516,12 @@ top_n: 1                        # N picks per region (not global)
 <ul>
 <li><a href="../strategies.yaml"><code>strategies.yaml</code></a> — universe, shared scoring/allocation/cost knobs, per-strategy entries</li>
 <li><a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> — broad discovery catalogue</li>
-<li><a href="../pea_momentum/score.py"><code>pea_momentum/score.py</code></a></li>
-<li><a href="../pea_momentum/allocate.py"><code>pea_momentum/allocate.py</code></a></li>
-<li><a href="../pea_momentum/backtest.py"><code>pea_momentum/backtest.py</code></a></li>
-<li><a href="../pea_momentum/stitching.py"><code>pea_momentum/stitching.py</code></a></li>
-<li><a href="../pea_momentum/metrics.py"><code>pea_momentum/metrics.py</code></a></li>
-<li><a href="../pea_momentum/correlations.py"><code>pea_momentum/correlations.py</code></a></li>
+<li><a href="../etfmom/score.py"><code>etfmom/score.py</code></a></li>
+<li><a href="../etfmom/allocate.py"><code>etfmom/allocate.py</code></a></li>
+<li><a href="../etfmom/backtest.py"><code>etfmom/backtest.py</code></a></li>
+<li><a href="../etfmom/stitching.py"><code>etfmom/stitching.py</code></a></li>
+<li><a href="../etfmom/metrics.py"><code>etfmom/metrics.py</code></a></li>
+<li><a href="../etfmom/correlations.py"><code>etfmom/correlations.py</code></a></li>
 </ul>
     </div>
 
