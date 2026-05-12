@@ -106,7 +106,7 @@
 <li><a href="#1-framework-label">1. Framework label</a></li>
 <li><a href="#2-strategy-modes">2. Strategy modes</a><ul>
 <li><a href="#21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</a></li>
-<li><a href="#22-scoring-etfmomscorepy">2.2 Scoring (etfmom/score.py)</a></li>
+<li><a href="#22-scoring-etfmomsignalscorepy">2.2 Scoring (etfmom/signal/score.py)</a></li>
 <li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
 <li><a href="#231-top_per_region-selection-rule">2.3.1 top_per_region selection rule</a></li>
 </ul>
@@ -114,13 +114,13 @@
 <li><a href="#24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (etfmom/allocate.py)</a></li>
 </ul>
 </li>
-<li><a href="#3-stitching-etfmomstitchingpy-etfmomfetchpy">3. Stitching (etfmom/stitching.py, etfmom/fetch.py)</a><ul>
+<li><a href="#3-stitching-etfmomdatastitchingpy-etfmomdatafetchpy">3. Stitching (etfmom/data/stitching.py, etfmom/data/fetch.py)</a><ul>
 <li><a href="#31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</a></li>
 <li><a href="#32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (kind: synth)</a></li>
 <li><a href="#33-bad-data-scrubbing">3.3 Bad-data scrubbing</a></li>
 </ul>
 </li>
-<li><a href="#4-cost-model-etfmombacktestpy">4. Cost model (etfmom/backtest.py)</a><ul>
+<li><a href="#4-cost-model-etfmombacktest">4. Cost model (etfmom/backtest/)</a><ul>
 <li><a href="#41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</a></li>
 </ul>
 </li>
@@ -153,9 +153,10 @@
   ──▶ weighting rule (equal_weight / score_proportional / regional_weights)
   ──▶ largest-remainder rounding to granularity_pct
   ──▶ rounding shortfall ─▶ residual_holder
-       (= safe asset if listed in `assets:`, else CASH 0%-return placeholder)
+       (= safe asset when listed in `assets:`; otherwise the rounding step
+        is exact under largest-remainder so no residual is parked)
 </code></pre>
-<h3 id="22-scoring-etfmomscorepy">2.2 Scoring (<code>etfmom/score.py</code>)</h3>
+<h3 id="22-scoring-etfmomsignalscorepy">2.2 Scoring (<code>etfmom/signal/score.py</code>)</h3>
 <p>Score at signal date <code>t</code>:</p>
 <pre><code>score(asset) = aggregate_over_lookbacks(close(t) / close(t - L) - 1)
 </code></pre>
@@ -181,11 +182,9 @@ top_n: 1                        # N picks per region (not global)
 <li><strong><code>regional_weights</code></strong> (paired with <code>selection_rule: top_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
 </ul>
 <p>After raw weights are computed, they are rounded via <strong>largest-remainder (Hare quota)</strong> to integer multiples of <code>granularity_pct</code> (10% by default). Largest-remainder is exact-summing by construction, so when there are selected candidates the rounded weights total 100% — no residual.</p>
-<p>The <strong>residual holder</strong> catches both rounding shortfalls (rare under largest-remainder) and the early-history "no scores yet at this rebalance" path (when no asset has enough lookback to produce a signal):
-- the <strong>safe asset</strong> if it's listed in the strategy's <code>assets:</code> (residual earns €STR yield), OR
-- a <strong><code>cash</code></strong> placeholder (0%-return, no yield) when the strategy has no safe asset listed.</p>
+<p>The <strong>residual holder</strong> catches rounding shortfalls (rare under largest-remainder, which is exact-summing in the typical case): the <strong>safe asset</strong> when it's listed in the strategy's <code>assets:</code> (residual earns €STR yield). Strategies that don't list a safe asset have no residual holder — under largest-remainder the risky weights sum to exactly 100% so this almost never fires; if it ever does, <code>allocate</code> raises rather than silently parking weight on a synthetic 0%-return placeholder. The early-history "no scores yet" path is handled upstream by the rebalance loop (counted as <code>n_signal_skips</code>) rather than by the residual mechanism.</p>
 <p>The "list the safe asset explicitly to get the defensive crash behaviour" pattern is the YAML-honesty corollary: what you list is what you get.</p>
-<h2 id="3-stitching-etfmomstitchingpy-etfmomfetchpy">3. Stitching (<code>etfmom/stitching.py</code>, <code>etfmom/fetch.py</code>)</h2>
+<h2 id="3-stitching-etfmomdatastitchingpy-etfmomdatafetchpy">3. Stitching (<code>etfmom/data/stitching.py</code>, <code>etfmom/data/fetch.py</code>)</h2>
 <p>Most PEA-eligible UCITS ETFs in the active universe launched between 2014 and 2024, so a 2008-onward backtest needs pre-launch history. The splice approach:</p>
 <ol>
 <li>Fetch the live ETF series (post-inception only).</li>
@@ -209,7 +208,7 @@ top_n: 1                        # N picks per region (not global)
 <p><strong>Caveat — interpreting the world_lev_2x GFC drawdown.</strong> The 2008-08 → 2009-03 trough on <code>world_lev_2x</code> (≈ -73.6% from the 2008-08-15 backtest start) comes from the <strong><code>lev2x_iusa_as_msci_usa</code> bridge proxy</strong>, not from a true 2x-MSCI-World series — CW8.PA's first close is 2009-06-16, so the GFC trough is literally MSCI-USA 2x. MSCI-USA fell harder than the Nasdaq-100 in 2008 (financials-heavy index vs already-mean-reverted-tech), which is why <code>world_lev_2x</code> shows a deeper MaxDD than <code>us_lev_nasdaq_2x</code> (-66.3%) over the same window. A naive 2× of unlevered MSCI-World daily returns would also produce ≈ -82% over the equivalent window — TER + financing aren't inflating it. Read <code>world_lev_2x</code> MaxDD pre-2009-06-16 as a property of the bridge, not of MSCI World itself.</p>
 </blockquote>
 <h3 id="32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (<code>kind: synth</code>)</h3>
-<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../etfmom/fetch.py"><code>etfmom/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
+<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
 <p>Currently registered:</p>
 <ul>
 <li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1996. Construction:</li>
@@ -234,12 +233,12 @@ top_n: 1                        # N picks per region (not global)
 <h3 id="33-bad-data-scrubbing">3.3 Bad-data scrubbing</h3>
 <p>yfinance has been observed to return spurious "round-trip" closes (price drops 50%, recovers next day, sometimes over multiple days). These are detected at two layers:</p>
 <ol>
-<li><strong>Splice-time scrub</strong> (<code>stitching._scrub_round_trip_spikes</code>) on each individual <code>[date, close]</code> series before concatenation. Catches single-day spikes plus the FX-channel spikes that propagate across every cross-currency proxy.</li>
-<li><strong>Backtest-time scrub</strong> (<code>stitching.scrub_long_format</code>) on the full long-format <code>prices.parquet</code>. Catches multi-day round-trip patterns up to 3 days, plus sustained "flat run" forward-fill artefacts of length ≥ 3 trading days.</li>
+<li><strong>Splice-time scrub</strong> (<code>data.stitching._scrub_round_trip_spikes</code>) on each individual <code>[date, close]</code> series before concatenation. Catches single-day spikes plus the FX-channel spikes that propagate across every cross-currency proxy.</li>
+<li><strong>Backtest-time scrub</strong> (<code>data.stitching.scrub_long_format</code>) on the full long-format <code>prices.parquet</code>. Catches multi-day round-trip patterns up to 3 days, plus sustained "flat run" forward-fill artefacts of length ≥ 3 trading days.</li>
 </ol>
 <p>Both layers null the corrupt close so the daily-return chain shows 0% on the bad day, then forward-fill replaces it with the previous valid close. Genuine non-round-trip outliers above the 30% plausibility ceiling raise <code>FetchError</code> for human investigation.</p>
 <p>A small hand-curated dictionary of known step-correction patches (<code>fetch._KNOWN_BAD_UNDERLYING_DAYS</code>) handles non-V-shape errors that the round-trip scrubber can't catch — currently one entry, for <code>IUSA.AS</code>'s 2009-01-02 spurious -27% step.</p>
-<h2 id="4-cost-model-etfmombacktestpy">4. Cost model (<code>etfmom/backtest.py</code>)</h2>
+<h2 id="4-cost-model-etfmombacktest">4. Cost model (<code>etfmom/backtest/</code>)</h2>
 <p>Per-rebalance cost is computed <strong>per-asset</strong>, not as a flat rate on aggregate turnover:</p>
 <pre><code>cost_at_fill = Σ_i |delta_w_i| * (per_trade_pct/100 + est_spread_bps_i / 2 / 10000)
 </code></pre>
@@ -318,11 +317,12 @@ top_n: 1                        # N picks per region (not global)
 <ul>
 <li><strong>Rebalance day R</strong> is a Sunday (the rotation cadence determines which ones).</li>
 <li><strong>Signal date S = R - 2d</strong>: the preceding Friday's close is what scoring sees.</li>
-<li><strong>Fill date F = R + 1d</strong>: the following Monday's close is the assumed execution price. Costs are charged on F as a negative return; new weights take effect from F+1.</li>
+<li><strong>Fill date F = R + 1d</strong>: Monday is the execution day. The default fill price is <code>(open+high+low)/3</code> of Monday (<code>fill_mode = "ohl3"</code>), which approximates a TWAP execution and is more robust than picking the close. The <code>fill_mode = "close"</code> knob switches to Monday's close for sensitivity testing. The day's gross return splits into an AM leg (Friday-close → fill price, on the OLD weights) and a PM leg (fill price → Monday-close, on the NEW weights); costs are charged on the fill leg as a negative return.</li>
 </ul>
 <p>This guarantees no look-ahead and matches the realistic case for a French PEA holder reviewing weekly signals over the weekend.</p>
 <h3 id="51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</h3>
 <p>Every cadence rebalances <strong>unconditionally on the first Sunday of the backtest range</strong>, even when that Sunday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_first_sunday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Sunday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct first Sundays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_sunday</code>, <code>quarterly_first_sunday</code>, or <code>semiannual_first_sunday</code> strategy, all of them have their first rebalance on the same day-1 Sunday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
+<p><strong>Strategies without a safe asset listed</strong> (e.g. <code>pair_us_em</code>, <code>pair_us_em_lev</code>) have their equity curve <strong>anchored to the trading day before their first real signal</strong> instead of the backtest's first Sunday. Without a safe sleeve to park warm-up weight, there is no defensible "100% in 0%-return cash" warm-up — the curve simply begins when the strategy actually has a signal. Cross-strategy plots therefore align on the start date only among strategies sharing safe-asset listing; strategies without a safe asset plot a shorter (post-warm-up) history.</p>
 <p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Sunday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Sunday — alignment is achievable only when the data permits.</p>
 <h2 id="6-performance-metrics-etfmommetricspy">6. Performance metrics (<code>etfmom/metrics.py</code>)</h2>
 <p>Computed on the daily equity curve plus the rebalance log:</p>
@@ -389,16 +389,16 @@ top_n: 1                        # N picks per region (not global)
 </tbody>
 </table>
 <h3 id="61-rf0-in-sharpe-sortino">6.1 <code>rf=0</code> in Sharpe / Sortino</h3>
-<p>The framework already absorbs the risk-free rate at the strategy level: a strategy that lists the safe asset in its <code>assets:</code> will rotate into it during crashes (€STR yield wins the rank when equity scores collapse), and one that doesn't list it falls through to a 0%-return CASH placeholder. Subtracting <code>rf</code> again at the metric layer would double-count the safe-asset return for safe-listing strategies. The dashboard's Sharpe is therefore directly comparable across rotation strategies with similar safe-asset treatment, but slightly biased upward when comparing safe-listing strategies against pure-equity ones.</p>
+<p>The framework already absorbs the risk-free rate at the strategy level: a strategy that lists the safe asset in its <code>assets:</code> will rotate into it during crashes (€STR yield wins the rank when equity scores collapse). Strategies that don't list a safe asset don't earn warm-up yield (their equity curve is anchored to the first real signal — see §5.1). Subtracting <code>rf</code> again at the metric layer would double-count the safe-asset return for safe-listing strategies. The dashboard's Sharpe is therefore directly comparable across rotation strategies with similar safe-asset treatment, but slightly biased upward when comparing safe-listing strategies against pure-equity ones.</p>
 <h3 id="62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</h3>
 <p>Per-day hit rate is near-meaningless for a slow rotation strategy — sample size is dominated by quiet drift days. The per-rebalance hit rate ("did the equity at the next rebalance exceed the equity at this one?") is the meaningful skill measure: sample size = number of rebalances, and that's exactly the bet the strategy is making each cycle.</p>
 <h2 id="7-discovery-redundancy">7. Discovery &amp; redundancy</h2>
 <p>The broad PEA-eligible Amundi universe in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> is fetched independently and used for correlation-matrix exploration. Two diagnostics are produced:</p>
 <ul>
-<li><strong>Complete-link clustering</strong> (<code>correlations.find_groups</code>) groups assets where <em>every</em> member-to-member daily correlation exceeds the threshold (default 0.90). This avoids the chaining property of single-link clustering, where two weakly correlated assets get lumped together via a high-correlation bridge pair.</li>
-<li><strong>Best-in-group representative</strong> (<code>correlations.best_in_group</code>) picks the <strong>lowest-TER</strong> member of each group. TER is decided ex-ante, so the choice is immune to in-sample selection bias — unlike a 1-year CAGR ranking, which would be momentum-on-momentum and defeat the prospective spirit of dual momentum.</li>
+<li><strong>Complete-link clustering</strong> (<code>diagnostic.correlations.find_groups</code>) groups assets where <em>every</em> member-to-member daily correlation exceeds the threshold (default 0.90). This avoids the chaining property of single-link clustering, where two weakly correlated assets get lumped together via a high-correlation bridge pair.</li>
+<li><strong>Best-in-group representative</strong> (<code>diagnostic.correlations.best_in_group</code>) picks the <strong>lowest-TER</strong> member of each group. TER is decided ex-ante, so the choice is immune to in-sample selection bias — unlike a 1-year CAGR ranking, which would be momentum-on-momentum and defeat the prospective spirit of dual momentum.</li>
 </ul>
-<p><code>diagnostics.diagnose_strategies</code> then cross-references each strategy's asset slice against these groups and emits two diagnostic types: <strong><code>remove</code></strong> (the strategy uses 2+ assets in the same redundancy group — keep one, drop the others) and <strong><code>replace</code></strong> (the strategy uses an asset that isn't the lowest-TER pick in its group).</p>
+<p><code>diagnostic.diagnose.diagnose_strategies</code> then cross-references each strategy's asset slice against these groups and emits two diagnostic types: <strong><code>remove</code></strong> (the strategy uses 2+ assets in the same redundancy group — keep one, drop the others) and <strong><code>replace</code></strong> (the strategy uses an asset that isn't the lowest-TER pick in its group).</p>
 <h2 id="8-glossary">8. Glossary</h2>
 <p>For future readers: the canonical vocabulary used across YAML, code, and dashboard. If a term doesn't appear here, it's not part of the framework's API surface.</p>
 <table>
@@ -484,17 +484,17 @@ top_n: 1                        # N picks per region (not global)
 </tr>
 <tr>
 <td>Safe asset</td>
-<td><code>synth_proxy: estr</code> on a regular catalog entry (currently <code>cash_estr</code>)</td>
+<td><code>is_safe: true</code> on a catalog entry (currently <code>cash_estr</code>, which fetches via <code>synth_proxy: estr</code>)</td>
 <td><code>Config.safe_asset</code> (a regular <code>Asset</code>), <code>Config.safe_asset_id</code></td>
 <td><code>safe</code> chip in the <strong>Cash</strong> column</td>
-<td>Treated like any other asset under the rank-only methodology — list it in a strategy's <code>assets:</code> to give it a chance to win the top-N during crashes.</td>
+<td>The role flag (<code>is_safe</code>) and the fetcher recipe (<code>synth_proxy</code>) are independent — <code>is_safe</code> marks the engulfing-filter / residual-holder reference; <code>synth_proxy</code> routes the fetch path. Treated like any other asset under the rank-only methodology — list it in a strategy's <code>assets:</code> to give it a chance to win the top-N during crashes.</td>
 </tr>
 <tr>
-<td>Cash residual</td>
-<td>(n/a)</td>
-<td><code>allocate.CASH_KEY</code></td>
-<td><code>cash</code> chip</td>
-<td>0%-return placeholder for rounding-shortfall residuals (rare under largest-remainder) and the early-history "no scores yet at this rebalance" path when the safe asset isn't listed.</td>
+<td>Residual holder</td>
+<td>(implicit)</td>
+<td><code>backtest.engine.run</code> <code>residual_holder</code></td>
+<td>(none — folds into safe asset's chip)</td>
+<td>The strategy's safe asset id when listed; <code>None</code> otherwise. Catches rounding shortfalls (rare under largest-remainder). Strategies without a safe asset listed have their equity curve anchored to the first real signal, no warm-up cash.</td>
 </tr>
 <tr>
 <td>Per-asset bid-ask spread (bps)</td>
@@ -516,12 +516,14 @@ top_n: 1                        # N picks per region (not global)
 <ul>
 <li><a href="../strategies.yaml"><code>strategies.yaml</code></a> — universe, shared scoring/allocation/cost knobs, per-strategy entries</li>
 <li><a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> — broad discovery catalogue</li>
-<li><a href="../etfmom/score.py"><code>etfmom/score.py</code></a></li>
+<li><a href="../etfmom/signal/score.py"><code>etfmom/signal/score.py</code></a></li>
+<li><a href="../etfmom/signal/smoothing.py"><code>etfmom/signal/smoothing.py</code></a></li>
 <li><a href="../etfmom/allocate.py"><code>etfmom/allocate.py</code></a></li>
-<li><a href="../etfmom/backtest.py"><code>etfmom/backtest.py</code></a></li>
-<li><a href="../etfmom/stitching.py"><code>etfmom/stitching.py</code></a></li>
+<li><a href="../etfmom/backtest/"><code>etfmom/backtest/</code></a> — <code>engine.py</code>, <code>cushion.py</code>, <code>decoupled.py</code>, <code>compound.py</code>, <code>filters.py</code>, <code>serde.py</code></li>
+<li><a href="../etfmom/data/stitching.py"><code>etfmom/data/stitching.py</code></a></li>
+<li><a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a></li>
 <li><a href="../etfmom/metrics.py"><code>etfmom/metrics.py</code></a></li>
-<li><a href="../etfmom/correlations.py"><code>etfmom/correlations.py</code></a></li>
+<li><a href="../etfmom/diagnostic/correlations.py"><code>etfmom/diagnostic/correlations.py</code></a></li>
 </ul>
     </div>
 
