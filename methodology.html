@@ -144,7 +144,7 @@
 <h2 id="2-strategy-modes">2. Strategy modes</h2>
 <p>Two execution modes coexist:</p>
 <ul>
-<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_sunday</code>, <code>biweekly_sunday</code>, <code>monthly_first_sunday</code>, <code>quarterly_first_sunday</code>, <code>semiannual_first_sunday</code>) drives when this fires.</li>
+<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_first_saturday</code>, <code>quarterly_first_saturday</code>, <code>semiannual_first_saturday</code>) drives when this fires.</li>
 <li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nas_70_bh_lev</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../etfmom/universe.py"><code>etfmom/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
 </ul>
 <h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
@@ -321,17 +321,17 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <h3 id="41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</h3>
 <p><code>yfinance</code>'s <code>Ticker.info["bid"]/["ask"]</code> is intraday-only and frequently null for thinly-traded EU tickers. Boursorama scraping is not API-stable. A static per-asset estimate is the only honest backtesting approach — refresh sporadically as the live spreads shift.</p>
 <h2 id="5-execution-timing">5. Execution timing</h2>
-<p>All rotation strategies share the same Sunday-anchored cadence:</p>
+<p>All rotation strategies share the same Saturday-anchored cadence:</p>
 <ul>
-<li><strong>Rebalance day R</strong> is a Sunday (the rotation cadence determines which ones).</li>
-<li><strong>Signal date S = R - 2d</strong>: the preceding Friday's close is what scoring sees.</li>
-<li><strong>Fill date F = R + 1d</strong>: Monday is the execution day. The default fill price is <code>(open+high+low)/3</code> of Monday (<code>fill_mode = "ohl3"</code>), which approximates a TWAP execution and is more robust than picking the close. The <code>fill_mode = "close"</code> knob switches to Monday's close for sensitivity testing. The day's gross return splits into an AM leg (Friday-close → fill price, on the OLD weights) and a PM leg (fill price → Monday-close, on the NEW weights); costs are charged on the fill leg as a negative return.</li>
+<li><strong>Rebalance day R</strong> is a Saturday (the rotation cadence determines which ones). Saturday is the calendar day immediately after Friday's close, so rebalance outputs are available to the user across the weekend, before Monday's open.</li>
+<li><strong>Signal date S = R - 1d</strong>: the preceding Friday's close is what scoring sees.</li>
+<li><strong>Fill date F = R + 2d</strong>: Monday is the execution day. The default fill price is <code>(open+high+low)/3</code> of Monday (<code>fill_mode = "ohl3"</code>), which approximates a TWAP execution and is more robust than picking the close. The <code>fill_mode = "close"</code> knob switches to Monday's close for sensitivity testing. The day's gross return splits into an AM leg (Friday-close → fill price, on the OLD weights) and a PM leg (fill price → Monday-close, on the NEW weights); costs are charged on the fill leg as a negative return.</li>
 </ul>
 <p>This guarantees no look-ahead and matches the realistic case for a French PEA holder reviewing weekly signals over the weekend.</p>
 <h3 id="51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</h3>
-<p>Every cadence rebalances <strong>unconditionally on the first Sunday of the backtest range</strong>, even when that Sunday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_first_sunday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Sunday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct first Sundays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_sunday</code>, <code>quarterly_first_sunday</code>, or <code>semiannual_first_sunday</code> strategy, all of them have their first rebalance on the same day-1 Sunday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
-<p><strong>Strategies without a safe asset listed</strong> (e.g. <code>pair_us_em</code>, <code>pair_us_em_lev</code>) have their equity curve <strong>anchored to the trading day before their first real signal</strong> instead of the backtest's first Sunday. Without a safe sleeve to park warm-up weight, there is no defensible "100% in 0%-return cash" warm-up — the curve simply begins when the strategy actually has a signal. Cross-strategy plots therefore align on the start date only among strategies sharing safe-asset listing; strategies without a safe asset plot a shorter (post-warm-up) history.</p>
-<p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Sunday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Sunday — alignment is achievable only when the data permits.</p>
+<p>Every cadence rebalances <strong>unconditionally on the first Saturday of the backtest range</strong>, even when that Saturday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_first_saturday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Saturday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct first Saturdays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_saturday</code>, <code>quarterly_first_saturday</code>, or <code>semiannual_first_saturday</code> strategy, all of them have their first rebalance on the same day-1 Saturday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
+<p><strong>Strategies without a safe asset listed</strong> (e.g. <code>pair_us_em</code>, <code>pair_us_em_lev</code>) have their equity curve <strong>anchored to the trading day before their first real signal</strong> instead of the backtest's first Saturday. Without a safe sleeve to park warm-up weight, there is no defensible "100% in 0%-return cash" warm-up — the curve simply begins when the strategy actually has a signal. Cross-strategy plots therefore align on the start date only among strategies sharing safe-asset listing; strategies without a safe asset plot a shorter (post-warm-up) history.</p>
+<p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Saturday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Saturday — alignment is achievable only when the data permits.</p>
 <h2 id="6-performance-metrics-etfmommetricspy">6. Performance metrics (<code>etfmom/metrics.py</code>)</h2>
 <p>Computed on the daily equity curve plus the rebalance log:</p>
 <table>
@@ -472,10 +472,10 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 </tr>
 <tr>
 <td>Rebalance cadence</td>
-<td><code>rebalance: monthly_first_sunday</code></td>
+<td><code>rebalance: monthly_first_saturday</code></td>
 <td><code>Strategy.rebalance</code></td>
 <td><code>Cadence</code> (e.g. <code>monthly</code>, <code>weekly</code>, <code>biweekly</code>, <code>quarterly</code>, <code>semiannual</code>)</td>
-<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Sunday-anchored only.</td>
+<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Saturday-anchored only.</td>
 </tr>
 <tr>
 <td>Strategy mode</td>
