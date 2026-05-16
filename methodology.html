@@ -137,7 +137,6 @@
 </li>
 <li><a href="#7-discovery-redundancy">7. Discovery &amp; redundancy</a></li>
 <li><a href="#8-glossary">8. Glossary</a></li>
-<li><a href="#9-pointers">9. Pointers</a></li>
 </ul>
 </div>
 <h2 id="1-framework-label">1. Framework label</h2>
@@ -523,25 +522,12 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <tr>
 <td>Asset region bucket</td>
 <td>(n/a — derived from <code>category:</code>)</td>
-<td><code>discover.dashboard_bucket(Asset.category)</code></td>
-<td>Drives the <strong>World / US / Europe / Asia</strong> signal-table columns.</td>
-<td>Coarse buckets: <code>world</code> / <code>us</code> / <code>europe</code> (incl. eurozone/france/germany) / <code>asia</code> (incl. japan/em_asia/em). Cash-* categories ⇒ <code>cash</code> column.</td>
+<td><code>regions.dashboard_bucket(Asset.category)</code></td>
+<td>Drives the <strong>US / LatAm / Europe / Asia / World</strong> signal-table columns.</td>
+<td>Coarse buckets: <code>us</code> / <code>latam</code> (Emerging-LatAm) / <code>europe</code> (incl. eurozone/france/germany) / <code>asia</code> (incl. japan/em_asia/em) / <code>world</code>. Cash-* categories ⇒ <code>cash</code> column.</td>
 </tr>
 </tbody>
 </table>
-<h2 id="9-pointers">9. Pointers</h2>
-<ul>
-<li><a href="../strategies.yaml"><code>strategies.yaml</code></a> — universe, shared scoring/allocation/cost knobs, per-strategy entries</li>
-<li><a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> — broad discovery catalogue</li>
-<li><a href="../etfmom/signal/score.py"><code>etfmom/signal/score.py</code></a></li>
-<li><a href="../etfmom/signal/smoothing.py"><code>etfmom/signal/smoothing.py</code></a></li>
-<li><a href="../etfmom/allocate.py"><code>etfmom/allocate.py</code></a></li>
-<li><a href="../etfmom/backtest/"><code>etfmom/backtest/</code></a> — <code>engine.py</code>, <code>cushion.py</code>, <code>decoupled.py</code>, <code>_engine_prep.py</code>, <code>_kernel.py</code>, <code>_kernel_adapter.py</code>, <code>_plan_kernel.py</code>, <code>filters.py</code>, <code>serde.py</code></li>
-<li><a href="../etfmom/data/stitching.py"><code>etfmom/data/stitching.py</code></a></li>
-<li><a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a></li>
-<li><a href="../etfmom/metrics.py"><code>etfmom/metrics.py</code></a></li>
-<li><a href="../etfmom/diagnostic/correlations.py"><code>etfmom/diagnostic/correlations.py</code></a></li>
-</ul>
     </div>
 
     <footer></footer>
