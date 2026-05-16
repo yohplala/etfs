@@ -109,6 +109,7 @@
 <li><a href="#22-scoring-etfmomsignalscorepy">2.2 Scoring (etfmom/signal/score.py)</a></li>
 <li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
 <li><a href="#231-top_per_region-selection-rule">2.3.1 top_per_region selection rule</a></li>
+<li><a href="#232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (safe_asset_filter)</a></li>
 </ul>
 </li>
 <li><a href="#24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (etfmom/allocate.py)</a></li>
@@ -174,6 +175,13 @@
 top_n: 1                        # N picks per region (not global)
 </code></pre>
 <p>The filter step then trims the scored set to at most <code>top_n × #regions</code> entries, with <code>top_n</code> reinterpreted as "per region" rather than "global" inside this rule's context. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
+<h4 id="232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (<code>safe_asset_filter</code>)</h4>
+<p>An opt-in pre-rank gate that excludes any volatile asset whose score is below the safe asset's score by at least <code>safe_asset_filter_threshold_pct</code>. The safe sleeve must be listed in the strategy's <code>assets:</code> for the gate to engage; without it the filter is inert. Implemented in <a href="../etfmom/backtest/filters.py"><code>etfmom/backtest/filters.py</code></a> and the JIT planning kernel (<a href="../etfmom/backtest/_plan_kernel.py"><code>etfmom/backtest/_plan_kernel.py</code></a>).</p>
+<pre><code class="language-yaml">safe_asset_filter: true
+safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
+                                        # than 2 pp below the safe sleeve
+</code></pre>
+<p>Distinct from <code>momentum_delta_threshold_pct</code> — the latter applies to swap-vs-incumbent comparisons after selection, the engulfing gate applies <em>before</em> the rank picks the top-N. <code>safe_asset_filter_threshold_pct</code> is a grid-search axis (<a href="../etfmom/optimize/config.py"><code>OPTIMIZABLE_AXIS_NAMES</code></a>).</p>
 <h3 id="24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (<code>etfmom/allocate.py</code>)</h3>
 <p>Three weighting paths are supported:</p>
 <ul>
@@ -348,7 +356,7 @@ top_n: 1                        # N picks per region (not global)
 </tr>
 <tr>
 <td><code>sortino</code></td>
-<td>Same but only counts downside daily returns in the volatility denominator. <code>None</code> when there are no down-days (denominator is zero) — undefined ratio, rendered as "—".</td>
+<td><code>mean_daily / downside_dev × √252</code> where <code>downside_dev² = sum(min(r, 0)²) / n_obs</code> (canonical Pedersen-Satchell divisor — divides by total observations, not by <code>n_downside</code>; see <code>metrics.py:compute</code> docstring). <code>None</code> when there are no down-days (denominator is zero) — undefined ratio, rendered as "—".</td>
 </tr>
 <tr>
 <td><code>max_drawdown</code></td>
@@ -357,6 +365,14 @@ top_n: 1                        # N picks per region (not global)
 <tr>
 <td><code>calmar</code></td>
 <td><code>cagr / |max_drawdown|</code>. <code>None</code> when MaxDD is zero — undefined ratio, rendered as "—".</td>
+</tr>
+<tr>
+<td><code>ulcer_index</code></td>
+<td>RMS of the drawdown series (Martin &amp; McCann). Weights depth AND duration of drawdowns; quick recoveries pay back, deep-and-long drawdowns dominate. Always <code>≥ 0</code>.</td>
+</tr>
+<tr>
+<td><code>upi</code></td>
+<td><code>cagr / ulcer_index</code>. <code>None</code> when Ulcer Index is zero — undefined ratio, rendered as "—". Stricter than Calmar (sees the full drawdown series, not just the deepest single point); also a grid-search objective.</td>
 </tr>
 <tr>
 <td><code>hit_rate</code></td>
@@ -519,7 +535,7 @@ top_n: 1                        # N picks per region (not global)
 <li><a href="../etfmom/signal/score.py"><code>etfmom/signal/score.py</code></a></li>
 <li><a href="../etfmom/signal/smoothing.py"><code>etfmom/signal/smoothing.py</code></a></li>
 <li><a href="../etfmom/allocate.py"><code>etfmom/allocate.py</code></a></li>
-<li><a href="../etfmom/backtest/"><code>etfmom/backtest/</code></a> — <code>engine.py</code>, <code>cushion.py</code>, <code>decoupled.py</code>, <code>compound.py</code>, <code>filters.py</code>, <code>serde.py</code></li>
+<li><a href="../etfmom/backtest/"><code>etfmom/backtest/</code></a> — <code>engine.py</code>, <code>cushion.py</code>, <code>decoupled.py</code>, <code>_engine_prep.py</code>, <code>_kernel.py</code>, <code>_kernel_adapter.py</code>, <code>_plan_kernel.py</code>, <code>filters.py</code>, <code>serde.py</code></li>
 <li><a href="../etfmom/data/stitching.py"><code>etfmom/data/stitching.py</code></a></li>
 <li><a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a></li>
 <li><a href="../etfmom/metrics.py"><code>etfmom/metrics.py</code></a></li>
