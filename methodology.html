@@ -109,7 +109,7 @@
 <li><a href="#21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</a></li>
 <li><a href="#22-scoring-etfmomsignalscorepy">2.2 Scoring (etfmom/signal/score.py)</a></li>
 <li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
-<li><a href="#231-top_per_region-selection-rule">2.3.1 top_per_region selection rule</a></li>
+<li><a href="#231-per-region-pre-filter-top_n_per_region">2.3.1 Per-region pre-filter (top_n_per_region)</a></li>
 <li><a href="#232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (safe_asset_filter)</a></li>
 </ul>
 </li>
@@ -149,7 +149,7 @@
 </ul>
 <h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
 <pre><code>raw close prices ─▶ score (per asset, including safe if listed)
-  ──▶ optional region pre-filter (selection_rule: top_per_region)
+  ──▶ optional region pre-filter (when top_n_per_region is set)
   ──▶ top-N selection (by score, descending — sign-agnostic)
   ──▶ weighting rule (equal_weight / score_proportional / regional_weights)
   ──▶ largest-remainder rounding to granularity_pct
@@ -169,12 +169,12 @@
 <p>The top-N highest-scoring assets are picked <strong>regardless of the sign of their scores</strong>. Even in a synchronised bear regime where every score is negative, the strategy still allocates to the least-negative top-N — "hold the leader" rather than "go to cash via filter".</p>
 <p>Defensive behaviour comes from <strong>ranking</strong>, not filtering. List the safe asset (<code>cash_estr</code> — a low-volatility €STR-tracking sleeve) in a strategy's <code>assets:</code> and its small positive score will naturally win the top-N rank when every equity score collapses below zero, producing a 100%-safe defensive allocation organically. Strategies that don't list it forgo this defence and stay equity-allocated through bears (holding the least-bad equity sleeve).</p>
 <p>This is a deliberate methodology choice: defensive behaviour is opt-in via the universe composition, not enforced by the engine. A strategy always commits to a top-N allocation; if it lists the safe asset, the safe asset wins the rank during crashes — otherwise the strategy stays in the least-bad equity sleeve.</p>
-<h4 id="231-top_per_region-selection-rule">2.3.1 <code>top_per_region</code> selection rule</h4>
-<p>An optional pre-filter narrows the candidate pool to the top-N highest-scoring assets within each <code>dashboard_bucket</code> (<code>us</code> / <code>europe</code> / <code>asia</code>) before global selection. Configured per strategy:</p>
-<pre><code class="language-yaml">selection_rule: top_per_region
-top_n: 1                        # N picks per region (not global)
+<h4 id="231-per-region-pre-filter-top_n_per_region">2.3.1 Per-region pre-filter (<code>top_n_per_region</code>)</h4>
+<p>An optional pre-filter narrows the candidate pool to the top-<code>top_n_per_region</code> highest-scoring assets within each <code>dashboard_bucket</code> (<code>us</code> / <code>latam</code> / <code>europe</code> / <code>asia</code> / <code>world</code>) before global selection. Configured per strategy:</p>
+<pre><code class="language-yaml">top_n_per_region: 1   # keep best 1 per region bucket
+top_n: 2              # global cap applied after the per-region filter
 </code></pre>
-<p>The filter step then trims the scored set to at most <code>top_n × #regions</code> entries, with <code>top_n</code> reinterpreted as "per region" rather than "global" inside this rule's context. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
+<p>Set <code>top_n_per_region</code> (≥ 1) to enable the filter; omit it for region-blind global top-N. The filter keeps the best <code>top_n_per_region</code> per bucket, then <code>top_n</code> applies as a global cap on the regional winners. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n_per_region</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
 <h4 id="232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (<code>safe_asset_filter</code>)</h4>
 <p>An opt-in pre-rank gate that excludes any volatile asset whose score is below the safe asset's score by at least <code>safe_asset_filter_threshold_pct</code>. The safe sleeve must be listed in the strategy's <code>assets:</code> for the gate to engage; without it the filter is inert. Implemented in <a href="../etfmom/backtest/filters.py"><code>etfmom/backtest/filters.py</code></a> and the JIT planning kernel (<a href="../etfmom/backtest/_plan_kernel.py"><code>etfmom/backtest/_plan_kernel.py</code></a>).</p>
 <pre><code class="language-yaml">safe_asset_filter: true
@@ -187,7 +187,7 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <ul>
 <li><strong><code>equal_weight</code></strong> (the framework default): <code>1/N</code> across the selected top-N assets. Canonical Antonacci-style weighting and the recommended live setup; robust to negative scores.</li>
 <li><strong><code>score_proportional</code></strong>: a magnitude-weighted alternative used by a small number of strategies in the lineup. Sensitivity exhibit relative to the equal-weight default.</li>
-<li><strong><code>regional_weights</code></strong> (paired with <code>selection_rule: top_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
+<li><strong><code>regional_weights</code></strong> (paired with <code>top_n_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
 </ul>
 <p>After raw weights are computed, they are rounded via <strong>largest-remainder (Hare quota)</strong> to integer multiples of <code>granularity_pct</code> (10% by default). Largest-remainder is exact-summing by construction, so when there are selected candidates the rounded weights total 100% — no residual.</p>
 <p>The <strong>residual holder</strong> catches rounding shortfalls (rare under largest-remainder, which is exact-summing in the typical case): the <strong>safe asset</strong> when it's listed in the strategy's <code>assets:</code> (residual earns €STR yield). Strategies that don't list a safe asset have no residual holder — under largest-remainder the risky weights sum to exactly 100% so this almost never fires; if it ever does, <code>allocate</code> raises rather than silently parking weight on a synthetic 0%-return placeholder. The early-history "no scores yet" path is handled upstream by the rebalance loop (counted as <code>n_signal_skips</code>) rather than by the residual mechanism.</p>
@@ -207,7 +207,7 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <p>A few representative chains in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>:</p>
 <ul>
 <li><code>world</code> (DCAM.PA): <code>IWDA.AS</code> (cleanest, EUR Acc UCITS since 2009-09-25) → <code>IWRD.L</code> (same fund, USD Dist share class, +9 months back to 2009-01-02) → <code>ACWI</code> (broader MSCI ACWI, ~12% EM contamination, extends to 2008-03-28 capturing the Lehman peak).</li>
-<li><code>em_asia</code> (PAASI.PA): <code>EEMA</code> (pure MSCI EM Asia since 2012-02-09) → <code>AAXJ</code> (Asia ex-Japan, ~10% developed-Asia drift, extends to 2008-08-15).</li>
+<li><code>em_asia</code> (PAASI.PA): <code>EEMA</code> (pure MSCI EM Asia since 2012-02-09) → <code>AAXJ</code> (Asia ex-Japan, ~10% developed-Asia drift, since 2008-08-15) → <code>EEM</code> (broad MSCI EM, ~25% non-Asia drift, covers the pre-2008-08 stub down to the backtest start).</li>
 <li><code>eurostoxx50</code> (C50.PA): <code>CSX5.AS</code> (iShares Core EUR Acc since 2014-04-28, low TER same as live) → <code>MSE.PA</code> (Amundi II share class, higher TER, extends to 2008-01-02).</li>
 <li><code>topix_hedged</code> (PTPXH.PA): <code>IJPE.L</code> (real EUR-hedged Japan ETF since 2010-09-30) → <code>eur_hedged_jp</code> (synthetic recipe — see below).</li>
 <li><code>world_lev_2x</code> (LVWC.DE, live since 2025-10): <code>lev2x_cw8_pa_msci_world</code> (synthetic 2x daily-leveraged MSCI World, EUR-native via CW8.PA since 2009-06-16) → <code>lev2x_iusa_as_msci_usa</code> (US-only fallback for the deepest pre-history segment, 2008-01-02 → 2009-06-15).</li>
@@ -450,25 +450,25 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <td><code>equal_weight</code> is canonical; <code>score_proportional</code> is the opt-in sensitivity exhibit.</td>
 </tr>
 <tr>
-<td>Selection rule</td>
-<td><code>selection_rule: top_n</code> (default) or <code>top_per_region</code></td>
-<td><code>Strategy.selection_rule</code></td>
+<td>Per-region pre-filter</td>
+<td><code>top_n_per_region: 1</code> (omit for global top-N)</td>
+<td><code>Strategy.top_n_per_region</code></td>
 <td>(folded into Allocation label)</td>
-<td><code>top_per_region</code> reinterprets <code>top_n</code> as "N per region" (filter to top-N within each <code>dashboard_bucket</code> first).</td>
+<td>When set (≥ 1), keeps the best <code>top_n_per_region</code> within each <code>dashboard_bucket</code>, THEN applies <code>top_n</code> as a global cap on the regional winners.</td>
 </tr>
 <tr>
 <td>Number of selected sleeves</td>
 <td><code>top_n: 3</code></td>
 <td><code>Strategy.top_n</code></td>
 <td>(folded into Allocation label)</td>
-<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Meaning depends on <code>selection_rule</code>: global top-N by default, or per-region top-N when <code>top_per_region</code>.</td>
+<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Meaning: global top-N when <code>top_n_per_region</code> is unset; otherwise <code>top_n</code> is the global cap applied after the per-region (<code>top_n_per_region</code>) filter.</td>
 </tr>
 <tr>
 <td>Per-region static weights</td>
 <td><code>regional_weights: {us: 0.6, europe: 0.1, asia: 0.3}</code></td>
 <td><code>Strategy.regional_weights</code></td>
 <td><code>Allocation</code> shows <code>static</code></td>
-<td>Paired with <code>top_per_region</code>; each region's weight is split equally among its picks.</td>
+<td>Paired with <code>top_n_per_region</code>; each region's weight is split equally among its picks.</td>
 </tr>
 <tr>
 <td>Rebalance cadence</td>
