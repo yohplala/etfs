@@ -128,6 +128,7 @@
 </li>
 <li><a href="#5-execution-timing">5. Execution timing</a><ul>
 <li><a href="#51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</a></li>
+<li><a href="#52-warm-up-the-lookback-reads-pre-start-history">5.2 Warm-up: the lookback reads pre-start history</a></li>
 </ul>
 </li>
 <li><a href="#6-performance-metrics-etfmommetricspy">6. Performance metrics (etfmom/metrics.py)</a><ul>
@@ -144,7 +145,7 @@
 <h2 id="2-strategy-modes">2. Strategy modes</h2>
 <p>Two execution modes coexist:</p>
 <ul>
-<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_last_saturday</code>, <code>quarterly_last_saturday</code>, <code>semiannual_last_saturday</code>) drives when this fires.</li>
+<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_last_saturday</code>, <code>monthly_first_saturday</code>, <code>quarterly_last_saturday</code>, <code>semiannual_last_saturday</code>) drives when this fires.</li>
 <li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies.yaml"><code>strategies.yaml</code></a> (e.g. <code>nas_70_bh_lev</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../etfmom/universe.py"><code>etfmom/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
 </ul>
 <h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
@@ -176,7 +177,7 @@ top_n: 2              # global cap applied after the per-region filter
 </code></pre>
 <p>Set <code>top_n_per_region</code> (≥ 1) to enable the filter; omit it for region-blind global top-N. The filter keeps the best <code>top_n_per_region</code> per bucket, then <code>top_n</code> applies as a global cap on the regional winners. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n_per_region</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
 <h4 id="232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (<code>safe_asset_filter</code>)</h4>
-<p>An opt-in pre-rank gate that excludes any volatile asset whose score is below the safe asset's score by at least <code>safe_asset_filter_threshold_pct</code>. The safe sleeve must be listed in the strategy's <code>assets:</code> for the gate to engage; without it the filter is inert. Implemented in <a href="../etfmom/backtest/filters.py"><code>etfmom/backtest/filters.py</code></a> and the JIT planning kernel (<a href="../etfmom/backtest/_plan_kernel.py"><code>etfmom/backtest/_plan_kernel.py</code></a>).</p>
+<p>An opt-in pre-rank gate that excludes any volatile asset whose score is below the safe asset's score by at least <code>safe_asset_filter_threshold_pct</code>. The safe sleeve must be listed in the strategy's <code>assets:</code> for the gate to engage; without it the filter is inert. Implemented in the JIT planning kernel (<a href="../etfmom/backtest/_plan_kernel.py"><code>etfmom/backtest/_plan_kernel.py</code></a>).</p>
 <pre><code class="language-yaml">safe_asset_filter: true
 safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
                                         # than 2 pp below the safe sleeve
@@ -219,7 +220,7 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
 <p>Currently registered:</p>
 <ul>
-<li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1996. Construction:</li>
+<li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1999. Construction:</li>
 </ul>
 <p><code>L_synth(t) = (EWJ(t) × USDJPY(t)) / (EWJ(0) × USDJPY(0))
              × (estr(t) / estr(0))</code></p>
@@ -236,7 +237,10 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
   drag_t   = TER * dcal_t / 365.25                  (calendar-day TER accrual)
            + (€STR_pct / 100) * dcal_t / 360         (ECB ACT/360 financing leg)
   L(t)     = L(t-1) * (1 + r_lev_t)                  (compounded)</code></p>
-<p><code>dcal_t</code> = calendar days elapsed since the previous observation. TER follows ACT/365.25 (ETFs accrue management fees on calendar days); €STR follows the ECB ACT/360 convention. Used for <code>us_lev_msci_2x</code>, <code>us_lev_nasdaq_2x</code>, and the <code>world_lev_2x</code> deep-history chain.</p>
+<p><code>dcal_t</code> = calendar days elapsed since the previous observation. TER follows ACT/365.25 (ETFs accrue management fees on calendar days); €STR follows the ECB ACT/360 convention. Used for <code>us_lev_msci_2x</code> and the <code>world_lev_2x</code> deep-history chain.</p>
+<ul>
+<li><strong><code>lev2x_spy_msci_usa_via_eurfx</code></strong> and <strong><code>lev2x_qqq_nasdaq100_via_eurfx</code></strong> — USD-anchored 2x daily-leveraged variants built the same way, but from USD underlyings (<code>SPY</code> since 1993-01-29, <code>QQQ</code> since 1999-03-10) converted to EUR via the daily ECB EUR/USD rate. <code>lev2x_spy_msci_usa_via_eurfx</code> is the pre-2008 bridge for <code>us_lev_msci_2x</code>; <code>lev2x_qqq_nasdaq100_via_eurfx</code> is the deep-history proxy for <code>us_lev_nasdaq_2x</code>.</li>
+</ul>
 <p>Rows on <code>prices.parquet</code> for synthetic segments carry the standard <code>source = "stitched_proxy"</code> provenance — the chain mechanism doesn't differentiate synth from yfinance proxies once the EUR <code>[date, close]</code> series is built.</p>
 <h3 id="33-bad-data-scrubbing">3.3 Bad-data scrubbing</h3>
 <p>yfinance has been observed to return spurious "round-trip" closes (price drops 50%, recovers next day, sometimes over multiple days). These are detected at two layers:</p>
@@ -332,6 +336,9 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <p>Every cadence rebalances <strong>unconditionally on the first Saturday of the backtest range</strong>, even when that Saturday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_last_saturday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Saturday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct last Saturdays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_saturday</code>, <code>quarterly_last_saturday</code>, or <code>semiannual_last_saturday</code> strategy, all of them have their first rebalance on the same day-1 Saturday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
 <p><strong>Strategies without a safe asset listed</strong> (e.g. <code>pair_us_em</code>, <code>pair_us_em_lev</code>) have their equity curve <strong>anchored to the trading day before their first real signal</strong> instead of the backtest's first Saturday. Without a safe sleeve to park warm-up weight, there is no defensible "100% in 0%-return cash" warm-up — the curve simply begins when the strategy actually has a signal. Cross-strategy plots therefore align on the start date only among strategies sharing safe-asset listing; strategies without a safe asset plot a shorter (post-warm-up) history.</p>
 <p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Saturday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Saturday — alignment is achievable only when the data permits.</p>
+<h3 id="52-warm-up-the-lookback-reads-pre-start-history">5.2 Warm-up: the lookback reads pre-<code>start</code> history</h3>
+<p>The momentum score at signal date <em>S</em> looks back <code>lookbacks_days</code> trading days from <em>S</em>. That window reads price history from <strong>before</strong> the backtest <code>start</code>: the <code>start</code>/<code>end</code> filter is applied only to the equity/metric panel (<code>prepare_wide_frames</code> trims <code>wide</code>/<code>fill_wide</code>), <strong>not</strong> to the long price frame that feeds scoring (<code>prices_long_processed</code>). So a 12-month-lookback backtest starting 2008-08-15 is <strong>live and fully invested from day 1</strong>, scoring every asset off 2007 closes — metrics are warmed up, not idling in cash. The first-fill date drifts later for longer lookbacks <strong>only</strong> when an asset's available history is too short (e.g. a 20-month window has no value until 20 months after the asset's first bar), never because of a post-<code>start</code> warm-up policy.</p>
+<p><strong>Data-history guard (<code>engine.run</code>, fail-loud).</strong> Because an asset whose history begins after <code>start − lookback</code> would be <strong>silently NaN-excluded</strong> from selection until it accrues enough bars, <code>backtest.run</code> raises (when <code>start</code> is explicitly set) if any listed asset has fewer than <code>max(lookbacks_days)</code> bars before <code>start</code>. The fix is to <strong>extend the asset's <code>proxy_chain</code> backfill</strong> (preferred — see §3) so its synthetic history reaches back far enough, or to raise <code>start</code>. The error lists each offending asset and its first data date. A full-range backtest (<code>start=None</code>) is exempt: it intentionally warms up from the data floor, each asset entering selection once it has <code>lookback</code> history. Lookback length itself is hard-capped at <strong>16 months</strong> (<code>universe.MAX_LOOKBACK_DAYS = 336</code>); see §8 glossary.</p>
 <h2 id="6-performance-metrics-etfmommetricspy">6. Performance metrics (<code>etfmom/metrics.py</code>)</h2>
 <p>Computed on the daily equity curve plus the rebalance log:</p>
 <table>
@@ -433,7 +440,7 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <td><code>lookbacks_days: [21, 63, 126]</code></td>
 <td><code>Strategy.lookbacks_days</code>, <code>Scoring.lookbacks_days</code></td>
 <td><code>Scoring</code> (e.g. <code>ADM 1m/3m/6m mean</code>, <code>DM 12m</code>)</td>
-<td>Days, not months. 21 ≈ 1 month.</td>
+<td>Days, not months. 21 ≈ 1 month. <strong>Hard-capped at 16 months (336 days)</strong> — <code>universe.MAX_LOOKBACK_DAYS</code>, enforced on both the static value and the <code>optimize</code> axis; longer windows behave as a trend/valuation signal, not momentum.</td>
 </tr>
 <tr>
 <td>Score aggregation across lookbacks</td>
@@ -475,7 +482,7 @@ safe_asset_filter_threshold_pct: 2.0    # exclude assets scoring more
 <td><code>rebalance: monthly_last_saturday</code></td>
 <td><code>Strategy.rebalance</code></td>
 <td><code>Cadence</code> (e.g. <code>monthly</code>, <code>weekly</code>, <code>biweekly</code>, <code>quarterly</code>, <code>semiannual</code>)</td>
-<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Saturday-anchored only.</td>
+<td>Values: <code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_last_saturday</code>, <code>monthly_first_saturday</code>, <code>quarterly_last_saturday</code>, <code>semiannual_last_saturday</code>. The monthly in-month anchor (last vs first Saturday) is chosen by the cadence string itself — there is no separate anchor field. Required for rotation strategies; omitted for <code>buy_and_hold</code>. Saturday-anchored only.</td>
 </tr>
 <tr>
 <td>Strategy mode</td>
