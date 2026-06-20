@@ -157,7 +157,8 @@
 <pre><code>raw close prices ─▶ score (per asset, including safe if listed)
   ──▶ optional region pre-filter (when top_n_per_region is set)
   ──▶ top-N selection (by score, descending — sign-agnostic)
-  ──▶ weighting rule (equal_weight / score_proportional / regional_weights)
+  ──▶ weighting rule (equal_weight / score_proportional / inverse_volatility
+       / min_variance / regional_weights — see §2.4)
   ──▶ largest-remainder rounding to granularity_pct
   ──▶ rounding shortfall ─▶ residual_holder
        (= safe asset when listed in `assets:`; otherwise the rounding step
@@ -173,8 +174,7 @@
 </ul>
 <h3 id="23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</h3>
 <p>The top-N highest-scoring assets are picked <strong>regardless of the sign of their scores</strong>. Even in a synchronised bear regime where every score is negative, the strategy still allocates to the least-negative top-N — "hold the leader" rather than "go to cash via filter".</p>
-<p>Defensive behaviour comes from <strong>ranking</strong>, not filtering. List the safe asset (<code>cash_estr</code> — a low-volatility €STR-tracking sleeve) in a strategy's <code>assets:</code> and its small positive score will naturally win the top-N rank when every equity score collapses below zero, producing a 100%-safe defensive allocation organically. Strategies that don't list it forgo this defence and stay equity-allocated through bears (holding the least-bad equity sleeve).</p>
-<p>This is a deliberate methodology choice: defensive behaviour is opt-in via the universe composition, not enforced by the engine. A strategy always commits to a top-N allocation; if it lists the safe asset, the safe asset wins the rank during crashes — otherwise the strategy stays in the least-bad equity sleeve.</p>
+<p>Defensive behaviour comes from <strong>ranking</strong>, not filtering, and is opt-in via the universe composition rather than enforced by the engine. List the safe asset (<code>cash_estr</code> — a low-volatility €STR-tracking sleeve) in a strategy's <code>assets:</code> and its small positive score will naturally win the top-N rank when every equity score collapses below zero, producing a 100%-safe defensive allocation organically. Strategies that don't list it forgo this defence and stay equity-allocated through bears (holding the least-bad equity sleeve).</p>
 <h4 id="231-per-region-pre-filter-top_n_per_region">2.3.1 Per-region pre-filter (<code>top_n_per_region</code>)</h4>
 <p>An optional pre-filter narrows the candidate pool to the top-<code>top_n_per_region</code> highest-scoring assets within each <code>dashboard_bucket</code> (<code>us</code> / <code>latam</code> / <code>europe</code> / <code>asia</code> / <code>world</code> / <code>sov</code>) before global selection. Configured per strategy:</p>
 <pre><code class="language-yaml">top_n_per_region: 1   # keep best 1 per region bucket
