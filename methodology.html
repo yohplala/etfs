@@ -104,525 +104,273 @@
     </nav>
 
     <div class="panel md">
-      <h1 id="methodology">Methodology</h1>
-<p>This document is the canonical reference for "what is the dashboard actually showing me". Strategies are scored, allocated, costed, and stitched in the <code>etfmom</code> framework using deliberate choices documented here. Change behaviour by editing the <a href="../strategies/"><code>strategies/</code></a> YAMLs and the asset catalog metadata, never the source code.</p>
+      <h1 id="general-methodology">General methodology</h1>
+<p>This is the public, educational introduction to what this repository does:
+how it turns long histories of exchange-traded fund (ETF) prices into the
+backtested strategies and benchmarks the dashboard publishes. It is written
+for a general reader and stays at the level of concepts. It deliberately
+avoids configuration detail, the optimisation schema, and the more advanced
+research methods. Those live in dedicated documents:</p>
+<ul>
+<li>the configurable strategy formalism and the grid-search schema →
+  <a href="GRID_SEARCH.md"><code>GRID_SEARCH.md</code></a></li>
+<li>which strategies use which features →
+  <a href="FEATURE_MATRIX.md"><code>FEATURE_MATRIX.md</code></a></li>
+<li>the advanced / research-driven methods →
+  <a href="METHODOLOGY_ADVANCED.md"><code>METHODOLOGY_ADVANCED.md</code></a></li>
+<li>the literature citations →
+  <a href="BIBLIOGRAPHY.md"><code>BIBLIOGRAPHY.md</code></a></li>
+</ul>
+<p>Behaviour is driven entirely by the strategy configuration files in
+<a href="../strategies/"><code>strategies/</code></a> and by the asset catalog metadata, never by
+editing the source code.</p>
 <div class="toc">
 <ul>
-<li><a href="#1-framework-label">1. Framework label</a></li>
-<li><a href="#2-strategy-modes">2. Strategy modes</a><ul>
-<li><a href="#21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</a></li>
-<li><a href="#22-scoring-etfmomsignalscorepy">2.2 Scoring (etfmom/signal/score.py)</a></li>
-<li><a href="#23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</a><ul>
-<li><a href="#231-per-region-pre-filter-top_n_per_region">2.3.1 Per-region pre-filter (top_n_per_region)</a></li>
-<li><a href="#232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (safe_asset_filter)</a></li>
+<li><a href="#1-what-the-framework-does">1. What the framework does</a><ul>
+<li><a href="#11-the-safe-asset-defence-a-concept">1.1 The safe-asset defence (a concept)</a></li>
+<li><a href="#12-rotation-versus-buy-and-hold">1.2 Rotation versus buy-and-hold</a></li>
 </ul>
 </li>
-<li><a href="#24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (etfmom/allocate.py)</a></li>
+<li><a href="#2-where-the-price-history-comes-from">2. Where the price history comes from</a><ul>
+<li><a href="#21-proxy-chain-stitching">2.1 Proxy-chain stitching</a></li>
+<li><a href="#22-synthetic-proxies">2.2 Synthetic proxies</a></li>
+<li><a href="#23-bad-data-scrubbing">2.3 Bad-data scrubbing</a></li>
+<li><a href="#24-survivorship-and-selection-bias-an-important-caveat">2.4 Survivorship and selection bias (an important caveat)</a></li>
 </ul>
 </li>
-<li><a href="#3-stitching-etfmomdatastitchingpy-etfmomdatafetchpy">3. Stitching (etfmom/data/stitching.py, etfmom/data/fetch.py)</a><ul>
-<li><a href="#31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</a></li>
-<li><a href="#32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (kind: synth)</a></li>
-<li><a href="#33-bad-data-scrubbing">3.3 Bad-data scrubbing</a></li>
-<li><a href="#34-survivorship-selection-bias-known-caveat">3.4 Survivorship &amp; selection bias (known caveat)</a></li>
+<li><a href="#3-the-cost-model">3. The cost model</a></li>
+<li><a href="#4-execution-timing-and-warm-up">4. Execution timing and warm-up</a><ul>
+<li><a href="#41-the-lookback-reads-pre-start-history">4.1 The lookback reads pre-start history</a></li>
 </ul>
 </li>
-<li><a href="#4-cost-model-etfmombacktest">4. Cost model (etfmom/backtest/)</a><ul>
-<li><a href="#41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</a></li>
-</ul>
-</li>
-<li><a href="#5-execution-timing">5. Execution timing</a><ul>
-<li><a href="#51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</a></li>
-<li><a href="#52-warm-up-the-lookback-reads-pre-start-history">5.2 Warm-up: the lookback reads pre-start history</a></li>
-</ul>
-</li>
-<li><a href="#6-performance-metrics-etfmommetricspy">6. Performance metrics (etfmom/metrics.py)</a><ul>
-<li><a href="#61-rf0-in-sharpe-sortino">6.1 rf=0 in Sharpe / Sortino</a></li>
-<li><a href="#62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</a></li>
-</ul>
-</li>
-<li><a href="#7-discovery-redundancy">7. Discovery &amp; redundancy</a></li>
-<li><a href="#8-glossary">8. Glossary</a></li>
+<li><a href="#5-performance-metrics">5. Performance metrics</a></li>
+<li><a href="#6-discovery-and-redundancy">6. Discovery and redundancy</a></li>
+<li><a href="#7-glossary">7. Glossary</a></li>
 </ul>
 </div>
-<h2 id="1-framework-label">1. Framework label</h2>
-<p>The framework is <strong>rank-only momentum rotation</strong>. Selection is purely by score rank — there is no positive-momentum (<code>score &gt; 0</code>) floor and no absolute-momentum (vs safe-asset) gate. Every asset, including the safe asset when listed, competes on rank alone. References to "ADM" and "DM" elsewhere in the doc and dashboard label the <em>score recipe</em> (e.g. accelerated 1m/3m/6m mean vs single 12-month lookback), not any filter design.</p>
-<h2 id="2-strategy-modes">2. Strategy modes</h2>
-<p>Two execution modes coexist:</p>
-<ul>
-<li><strong><code>rotation</code></strong> — at each rebalance, score every listed asset, optionally pre-filter by region, pick the top-N highest scores, and weight them. The cadence (<code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_last_saturday</code>, <code>monthly_first_saturday</code>, <code>quarterly_last_saturday</code>, <code>semiannual_last_saturday</code>) drives when this fires.</li>
-<li><strong><code>buy_and_hold</code></strong> — equal-weight (or explicit <code>static_weights</code>) on <code>assets:</code>, allocated on day one and never rebalanced. No transaction cost. Used for static-allocation exhibits in <a href="../strategies/"><code>strategies/</code></a> (e.g. <code>nas_70_bh_lev</code> — the 70/30 leveraged-Nasdaq + €STR demo) and for the auto-generated single-asset benchmarks that populate the regional and World pages (<code>&lt;region&gt;/&lt;asset_id&gt;</code> strategies, see <a href="../etfmom/universe.py"><code>etfmom/universe.py</code></a>). Buy-and-hold strategies omit the <code>rebalance:</code> and <code>top_n:</code> fields entirely (both are meaningless without rotation).</li>
-</ul>
-<h3 id="21-rotation-pipeline-per-rebalance-day">2.1 Rotation pipeline (per rebalance day)</h3>
-<pre><code>raw close prices ─▶ score (per asset, including safe if listed)
-  ──▶ optional region pre-filter (when top_n_per_region is set)
-  ──▶ top-N selection (by score, descending — sign-agnostic)
-  ──▶ weighting rule (equal_weight / score_proportional / inverse_volatility
-       / min_variance / regional_weights — see §2.4)
-  ──▶ largest-remainder rounding to granularity_pct
-  ──▶ rounding shortfall ─▶ residual_holder
-       (= safe asset when listed in `assets:`; otherwise the rounding step
-        is exact under largest-remainder so no residual is parked)
-</code></pre>
-<h3 id="22-scoring-etfmomsignalscorepy">2.2 Scoring (<code>etfmom/signal/score.py</code>)</h3>
-<p>Score at signal date <code>t</code>:</p>
-<pre><code>score(asset) = aggregate_over_lookbacks(close(t) / close(t - L) - 1)
-</code></pre>
-<ul>
-<li><strong>Lookbacks</strong> are configured in trading days via the <code>lookbacks_days</code> field. The default accelerated set is <code>[21, 63, 126]</code> (≈ 1, 3, 6 months). A per-strategy override <code>lookbacks_days: [252]</code> produces the single-12-month variant; <code>[126]</code> produces the single-6-month variant.</li>
-<li><strong>Aggregations</strong>: <code>mean</code> (default), <code>median</code> (robust to a single anomalous lookback), <code>min</code> (pessimistic — biases against assets with any single weak window). The latter two are sensitivity exhibits, not the recommended live setup.</li>
-</ul>
-<h3 id="23-selection-rank-only-top-n">2.3 Selection: rank-only top-N</h3>
-<p>The top-N highest-scoring assets are picked <strong>regardless of the sign of their scores</strong>. Even in a synchronised bear regime where every score is negative, the strategy still allocates to the least-negative top-N — "hold the leader" rather than "go to cash via filter".</p>
-<p>Defensive behaviour comes from <strong>ranking</strong>, not filtering, and is opt-in via the universe composition rather than enforced by the engine. List the safe asset (<code>cash_estr</code> — a low-volatility €STR-tracking sleeve) in a strategy's <code>assets:</code> and its small positive score will naturally win the top-N rank when every equity score collapses below zero, producing a 100%-safe defensive allocation organically. Strategies that don't list it forgo this defence and stay equity-allocated through bears (holding the least-bad equity sleeve).</p>
-<h4 id="231-per-region-pre-filter-top_n_per_region">2.3.1 Per-region pre-filter (<code>top_n_per_region</code>)</h4>
-<p>An optional pre-filter narrows the candidate pool to the top-<code>top_n_per_region</code> highest-scoring assets within each <code>dashboard_bucket</code> (<code>us</code> / <code>latam</code> / <code>europe</code> / <code>asia</code> / <code>world</code> / <code>sov</code>) before global selection. Configured per strategy:</p>
-<pre><code class="language-yaml">top_n_per_region: 1   # keep best 1 per region bucket
-top_n: 2              # global cap applied after the per-region filter
-</code></pre>
-<p>Set <code>top_n_per_region</code> (≥ 1) to enable the filter; omit it for region-blind global top-N. The filter keeps the best <code>top_n_per_region</code> per bucket, then <code>top_n</code> applies as a global cap on the regional winners. The regional dataset then enters the weighting pipeline as usual. A bucket with fewer than <code>top_n_per_region</code> candidates contributes only what it has (silent shortfall, surfaced as an INFO log line).</p>
-<h4 id="232-engulfing-filter-safe_asset_filter">2.3.2 Engulfing filter (<code>safe_asset_filter</code>)</h4>
-<p>An opt-in pre-rank gate that keeps only the volatile assets whose score BEATS the safe asset's score by at least <code>safe_asset_filter_threshold_pct</code> (survive iff <code>score - safe_score &gt;= threshold</code>); everything below that margin is excluded, and when the survivor count falls short of <code>top_n</code> the safe asset itself is re-injected at its own score. The safe sleeve must be listed in the strategy's <code>assets:</code> for the gate to engage; without it the filter is inert. Implemented in the JIT planning kernel (<a href="../etfmom/backtest/_plan_kernel.py"><code>etfmom/backtest/_plan_kernel.py</code></a>).</p>
-<pre><code class="language-yaml">safe_asset_filter: true
-safe_asset_filter_threshold_pct: 2.0    # keep only assets scoring at
-                                        # least 2 pp ABOVE the safe sleeve
-</code></pre>
-<p>Distinct from <code>momentum_delta_threshold_pct</code> — the latter applies to swap-vs-incumbent comparisons after selection, the engulfing gate applies <em>before</em> the rank picks the top-N. <code>safe_asset_filter_threshold_pct</code> is a grid-search axis (<a href="../etfmom/optimize/config.py"><code>OPTIMIZABLE_AXIS_NAMES</code></a>).</p>
-<h3 id="24-allocation-rules-etfmomallocatepy">2.4 Allocation rules (<code>etfmom/allocate.py</code>)</h3>
-<p>Five weighting paths are supported:</p>
-<ul>
-<li><strong><code>equal_weight</code></strong> (the framework default): <code>1/N</code> across the selected top-N assets. Canonical Antonacci-style weighting and the recommended live setup; robust to negative scores.</li>
-<li><strong><code>score_proportional</code></strong>: a magnitude-weighted alternative used by a small number of strategies in the lineup. Sensitivity exhibit relative to the equal-weight default.</li>
-<li><strong><code>regional_weights</code></strong> (paired with <code>top_n_per_region</code>): a static-regional split. Each region's configured weight is split equally among its picks (e.g. <code>us: 0.6</code> with two US picks ⇒ each gets 0.3). Absent regions are forfeited and present-region weights renormalise. Score magnitudes are not used — selection has already happened upstream, regional weights then drive sizing across regions.</li>
-<li><strong><code>inverse_volatility</code></strong>: selected sleeves weighted ∝ <code>1/σ_i</code> (naive risk parity — exact risk parity when correlations are equal). <code>σ_i</code> is the volatility of daily close returns over the trailing <code>shared.allocation.risk_window_days</code> window (default 60) ending at the signal date — fully causal, measured on raw closes.</li>
-<li><strong><code>min_variance</code></strong>: long-only minimum-variance weights over the selected sleeves, using the trailing sample covariance shrunk toward its own diagonal (<code>shared.allocation.covariance_shrinkage</code>, default 0.25 — variance-preserving, so the diagonal matches <code>inverse_volatility</code>'s σ²; shrinkage 1.0 collapses onto inverse-variance weighting). Solved exactly by pairwise coordinate descent in the plan kernel (<code>_min_variance_long_only_kernel</code>).</li>
-</ul>
-<p>For the two risk-based rules: momentum still does the <strong>selection</strong> (top-N by score); risk only drives the <strong>weighting</strong> of what momentum picked. Any step whose selection touches an undefined risk estimate (insufficient window history) deterministically falls back to equal weight across the selection. Both rules are valid <code>allocation_rule</code> axis values in <code>optimize:</code> blocks.</p>
-<p>After raw weights are computed, they are rounded via <strong>largest-remainder (Hare quota)</strong> to integer multiples of <code>granularity_pct</code> (10% by default). Largest-remainder is exact-summing by construction, so when there are selected candidates the rounded weights total 100% — no residual.</p>
-<p>The <strong>residual holder</strong> catches rounding shortfalls (rare under largest-remainder, which is exact-summing in the typical case): the <strong>safe asset</strong> when it's listed in the strategy's <code>assets:</code> (residual earns €STR yield). Strategies that don't list a safe asset have no residual holder — under largest-remainder the risky weights sum to exactly 100% so this almost never fires; if it ever does, <code>allocate</code> raises rather than silently parking weight on a synthetic 0%-return placeholder. The early-history "no scores yet" path is handled upstream by the rebalance loop (counted as <code>n_signal_skips</code>) rather than by the residual mechanism.</p>
-<p>The "list the safe asset explicitly to get the defensive crash behaviour" pattern is the YAML-honesty corollary: what you list is what you get.</p>
-<h2 id="3-stitching-etfmomdatastitchingpy-etfmomdatafetchpy">3. Stitching (<code>etfmom/data/stitching.py</code>, <code>etfmom/data/fetch.py</code>)</h2>
-<p>Most PEA-eligible UCITS ETFs in the active universe launched between 2014 and 2024, so a 2008-onward backtest needs pre-launch history. The splice approach:</p>
+<h2 id="1-what-the-framework-does">1. What the framework does</h2>
+<p>The repository implements <strong>momentum rotation</strong> over a curated set of
+PEA-eligible UCITS ETFs (the funds a French retail investor can hold inside a
+<em>Plan d'Épargne en Actions</em>). The idea is simple and classic:</p>
 <ol>
-<li>Fetch the live ETF series (post-inception only).</li>
-<li>Fetch the configured <code>proxy_chain</code> — an ordered list of <code>{ticker, kind}</code> pairs, <strong>cleanest first</strong>. A length-1 chain is the standard single-stage form; longer chains layer extensions (see <a href="#31-multi-stage-proxy-chain">Multi-stage proxy chain</a>). Supported <code>kind</code> values: <code>eur_tr</code> (EUR-quoted, no FX), <code>usd_tr</code> (USD-quoted, EUR-converted via ECB EUR/USD), <code>synth</code> (recipe name resolved against <code>_SYNTH_PROXY_RECIPES</code>; see <a href="#32-synthetic-proxy-recipes-kind-synth">Synthetic-proxy recipes</a>).</li>
-<li>If a chain element is USD-denominated (<code>kind: usd_tr</code>), convert to EUR via the daily ECB EUR/USD reference rate.</li>
-<li><strong>Rescale the proxy levels</strong> so the proxy's level on the inception date matches the ETF's level on that date. Pre-inception levels are walked back from there using the proxy's own returns.</li>
-<li>Concatenate: scaled proxy for <code>date &lt; inception</code>, ETF for <code>date &gt;= inception</code>. The <code>source</code> column on <code>prices.parquet</code> records provenance (<code>yfinance</code> vs <code>stitched_proxy</code>).</li>
+<li><strong>Score</strong> each fund by how well it has performed recently — its trailing
+   return over one or more lookback windows.</li>
+<li><strong>Rank and pick</strong> the handful of strongest performers (the "top-N").</li>
+<li><strong>Weight</strong> the chosen funds.</li>
+<li><strong>Rebalance</strong> on a fixed weekly-anchored schedule, repeating the cycle.</li>
 </ol>
-<p>The result is continuous in level (no jump on the splice date) and continuous in return.</p>
-<h3 id="31-multi-stage-proxy-chain">3.1 Multi-stage proxy chain</h3>
-<p>Some assets benefit from chaining: a methodologically-pure proxy with shorter history (cleanest), then a less-clean one with longer history that extends only the pre-handoff segment. The <code>proxy_chain</code> is <strong>cleanest first</strong>: each successor is level-rescaled to match its predecessor at the predecessor's first available date. The chain extends history only as much as the dirtier proxies can — without contaminating the clean recent segment.</p>
-<p>A few representative chains in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>:</p>
+<p>Selection is <strong>rank-only</strong>: the strategy holds the current leaders. There is
+no requirement that a fund's momentum be positive, and no separate "beat the
+safe asset" gate. Even in a market where every fund has fallen, the strategy
+still allocates to the least-bad performers rather than automatically going to
+cash. The scoring recipe (for example, blending one-, three-, and six-month
+returns versus using a single twelve-month window) is a configurable choice;
+labels such as "ADM" or "DM" seen on the dashboard describe that recipe, not a
+filter.</p>
+<p>How funds are weighted and how many are selected are also configurable; the
+default is <strong>equal weighting</strong> across the selected funds, the canonical
+Antonacci-style choice. The full menu of weighting and selection options is
+documented in <a href="GRID_SEARCH.md"><code>GRID_SEARCH.md</code></a>, and
+<a href="FEATURE_MATRIX.md"><code>FEATURE_MATRIX.md</code></a> records which live strategies use
+which.</p>
+<h3 id="11-the-safe-asset-defence-a-concept">1.1 The safe-asset defence (a concept)</h3>
+<p>The framework's defence against crashes comes from <strong>ranking, not from a
+filter</strong>. The asset catalog includes a low-volatility "safe" sleeve — a cash
+proxy that tracks the euro short-term rate (€STR). When a strategy includes
+this safe sleeve among its candidates, its small steady positive score
+naturally rises to the top of the ranking when equity scores collapse in a
+bear market, producing a defensive, mostly-cash allocation organically. A
+strategy that does not include the safe sleeve forgoes this defence and stays
+invested in the least-bad equity through downturns. In short: what a strategy
+lists among its candidates is what it can hold.</p>
+<h3 id="12-rotation-versus-buy-and-hold">1.2 Rotation versus buy-and-hold</h3>
+<p>Two kinds of strategy coexist on the dashboard:</p>
 <ul>
-<li><code>world</code> (DCAM.PA): <code>IWDA.AS</code> (cleanest, EUR Acc UCITS since 2009-09-25) → <code>IWRD.L</code> (same fund, USD Dist share class, +9 months back to 2009-01-02) → <code>ACWI</code> (broader MSCI ACWI, ~12% EM contamination, extends to 2008-03-28 capturing the Lehman peak).</li>
-<li><code>em_asia</code> (PAASI.PA): <code>EEMA</code> (pure MSCI EM Asia since 2012-02-09) → <code>AAXJ</code> (Asia ex-Japan, ~10% developed-Asia drift, since 2008-08-15) → <code>EEM</code> (broad MSCI EM, ~25% non-Asia drift, covers the pre-2008-08 stub down to the backtest start).</li>
-<li><code>eurostoxx50</code> (C50.PA): <code>CSX5.AS</code> (iShares Core EUR Acc since 2014-04-28, low TER same as live) → <code>MSE.PA</code> (Amundi II share class, higher TER, extends to 2008-01-02).</li>
-<li><code>topix_hedged</code> (PTPXH.PA): <code>IJPE.L</code> (real EUR-hedged Japan ETF since 2010-09-30) → <code>eur_hedged_jp</code> (synthetic recipe — see below).</li>
-<li><code>world_lev_2x</code> (LVWC.DE, live since 2025-10): <code>lev2x_cw8_pa_msci_world</code> (synthetic 2x daily-leveraged MSCI World, EUR-native via CW8.PA since 2009-06-16) → <code>lev2x_iusa_as_msci_usa</code> (US-only fallback for the deepest pre-history segment, 2008-01-02 → 2009-06-15).</li>
+<li><strong>Rotation</strong> strategies run the score → rank → weight → rebalance cycle
+  described above.</li>
+<li><strong>Buy-and-hold</strong> strategies allocate once and never rebalance. They serve as
+  static benchmarks — including the single-fund benchmarks that populate the
+  regional and World pages — so that rotation results can be read against a
+  do-nothing baseline.</li>
 </ul>
-<blockquote>
-<p><strong>Caveat — interpreting the world_lev_2x GFC drawdown.</strong> The 2008-08 → 2009-03 trough on <code>world_lev_2x</code> (≈ -73.6% from the 2008-08-15 backtest start) comes from the <strong><code>lev2x_iusa_as_msci_usa</code> bridge proxy</strong>, not from a true 2x-MSCI-World series — CW8.PA's first close is 2009-06-16, so the GFC trough is literally MSCI-USA 2x. MSCI-USA fell harder than the Nasdaq-100 in 2008 (financials-heavy index vs already-mean-reverted-tech), which is why <code>world_lev_2x</code> shows a deeper MaxDD than <code>us_lev_nasdaq_2x</code> (-66.3%) over the same window. A naive 2× of unlevered MSCI-World daily returns would also produce ≈ -82% over the equivalent window — TER + financing aren't inflating it. Read <code>world_lev_2x</code> MaxDD pre-2009-06-16 as a property of the bridge, not of MSCI World itself.</p>
-</blockquote>
-<h3 id="32-synthetic-proxy-recipes-kind-synth">3.2 Synthetic-proxy recipes (<code>kind: synth</code>)</h3>
-<p>For assets whose pre-history can't be covered by any single ETF, the chain accepts a <code>kind: synth</code> entry where the <code>ticker</code> field is a recipe name (not a Yahoo symbol). The recipe is a small in-process function in <a href="../etfmom/data/fetch.py"><code>etfmom/data/fetch.py</code></a> that constructs an EUR-denominated <code>[date, close]</code> series from longer-history components.</p>
-<p>Currently registered:</p>
-<ul>
-<li><strong><code>eur_hedged_jp</code></strong> — synthesises EUR-hedged MSCI Japan back to 1999. Construction:</li>
-</ul>
-<p><code>L_synth(t) = (EWJ(t) × USDJPY(t)) / (EWJ(0) × USDJPY(0))
-             × (estr(t) / estr(0))</code></p>
-<p>The product <code>EWJ_USD × USDJPY</code> algebraically strips out the JPY/USD FX exposure baked into the unhedged EWJ ETF, leaving a pure JPY-denominated equity level. The <code>estr / estr(0)</code> term adds the EUR short-rate compounding (with EONIA splice pre-2019), which is the carry a EUR investor earns by selling JPY forward to hedge. The carry term implicitly assumes the JPY short rate is zero — true pre-2010 (BOJ ZIRP since 1999) which is exactly the period the chain uses the synthetic for. <strong>USDJPY source</strong>: derived as <code>EURJPY / EURUSD</code> from the ECB Data Portal rather than yfinance <code>USDJPY=X</code> — Yahoo's USDJPY series shares the same multi-week mid-2008 gaps as <code>EURUSD=X</code> (no fixings between 2008-08-08 and 2008-08-26, in particular), which would inner-join out 18 days at the start of the active backtest window. ECB EUR/JPY and EUR/USD are continuous on TARGET-2 working days since 1999-01-04, so the derived USDJPY is gap-free.</p>
-<ul>
-<li>
-<p><strong><code>eur_hedged_sp500</code></strong> — synthesises EUR-hedged S&amp;P 500 back to 2008-01-02 by stripping the USD/EUR FX from <code>^GSPC</code> levels and adding ECB €STR financing carry. Used in the <code>sp500_hedged</code> and <code>sp500_scr_hed</code> chains as the deepest fallback.</p>
-</li>
-<li>
-<p><strong><code>lev2x_iusa_as_msci_usa</code></strong> and <strong><code>lev2x_cw8_pa_msci_world</code></strong> — synthesise 2x daily-leveraged variants of MSCI USA and MSCI World back to 2008-01-02. Construction:</p>
-</li>
-</ul>
-<p><code>r_lev_t  = 2 * r_und_t - drag_t
-  drag_t   = TER * dcal_t / 365.25                  (calendar-day TER accrual)
-           + (€STR_pct / 100) * dcal_t / 360         (ECB ACT/360 financing leg)
-  L(t)     = L(t-1) * (1 + r_lev_t)                  (compounded)</code></p>
-<p><code>dcal_t</code> = calendar days elapsed since the previous observation. TER follows ACT/365.25 (ETFs accrue management fees on calendar days); €STR follows the ECB ACT/360 convention. Used for <code>us_lev_msci_2x</code> and the <code>world_lev_2x</code> deep-history chain.</p>
-<ul>
-<li><strong><code>lev2x_spy_msci_usa_via_eurfx</code></strong> and <strong><code>lev2x_qqq_nasdaq100_via_eurfx</code></strong> — USD-anchored 2x daily-leveraged variants built the same way, but from USD underlyings (<code>SPY</code> since 1993-01-29, <code>QQQ</code> since 1999-03-10) converted to EUR via the daily ECB EUR/USD rate. <code>lev2x_spy_msci_usa_via_eurfx</code> is the pre-2008 bridge for <code>us_lev_msci_2x</code>; <code>lev2x_qqq_nasdaq100_via_eurfx</code> is the deep-history proxy for <code>us_lev_nasdaq_2x</code>.</li>
-</ul>
-<p>Rows on <code>prices.parquet</code> for synthetic segments carry the standard <code>source = "stitched_proxy"</code> provenance — the chain mechanism doesn't differentiate synth from yfinance proxies once the EUR <code>[date, close]</code> series is built.</p>
-<h3 id="33-bad-data-scrubbing">3.3 Bad-data scrubbing</h3>
-<p>yfinance has been observed to return spurious "round-trip" closes (price drops 50%, recovers next day, sometimes over multiple days). These are detected at two layers:</p>
+<h2 id="2-where-the-price-history-comes-from">2. Where the price history comes from</h2>
+<p>Most PEA-eligible UCITS ETFs in the universe only launched between 2014 and
+2024, yet the backtest reaches back to 2008 to span the Global Financial
+Crisis. To get pre-launch history, each fund's series is <strong>stitched</strong> from
+older proxy data.</p>
+<h3 id="21-proxy-chain-stitching">2.1 Proxy-chain stitching</h3>
+<p>Each fund can declare an ordered <strong>proxy chain</strong> — a list of older series,
+cleanest first — used to extend its history before the fund itself existed:</p>
 <ol>
-<li><strong>Splice-time scrub</strong> (<code>data.stitching._scrub_round_trip_spikes</code>) on each individual <code>[date, close]</code> series before concatenation. Catches single-day spikes plus the FX-channel spikes that propagate across every cross-currency proxy.</li>
-<li><strong>Backtest-time scrub</strong> (<code>data.stitching.scrub_long_format</code>) on the full long-format <code>prices.parquet</code>. Catches multi-day round-trip patterns up to 3 days, plus sustained "flat run" forward-fill artefacts of length ≥ 3 trading days.</li>
+<li>Fetch the live ETF series (only from its real inception onward).</li>
+<li>Fetch the proxy series. Proxies may be quoted in euros directly, or in US
+   dollars and converted to euros using the daily ECB EUR/USD reference rate.</li>
+<li><strong>Rescale</strong> each proxy so its level matches the next, cleaner series on the
+   handoff date. Pre-handoff levels are then walked back using the proxy's own
+   returns.</li>
+<li>Concatenate: proxy data before inception, the real ETF afterward.</li>
 </ol>
-<p>Both layers null the corrupt close so the daily-return chain shows 0% on the bad day, then forward-fill replaces it with the previous valid close. Genuine non-round-trip outliers above the 30% plausibility ceiling raise <code>FetchError</code> for human investigation.</p>
-<p>A small hand-curated dictionary of known step-correction patches (<code>fetch._KNOWN_BAD_UNDERLYING_DAYS</code>) handles non-V-shape errors that the round-trip scrubber can't catch — currently one entry, for <code>IUSA.AS</code>'s 2009-01-02 spurious -27% step.</p>
-<h3 id="34-survivorship-selection-bias-known-caveat">3.4 Survivorship &amp; selection bias (known caveat)</h3>
-<p>The universe is hand-curated from <strong>today's</strong> listings, which embeds two related biases that no amount of stitching can remove:</p>
+<p>The result is a single continuous series with no artificial jump on the splice
+date. A multi-stage chain layers progressively older (and slightly less pure)
+proxies, each one only extending the segment before the cleaner data begins, so
+the recent, clean history is never contaminated by the deeper, dirtier
+backfill. The asset catalog (<a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>)
+records each fund's chain and splice dates.</p>
+<h3 id="22-synthetic-proxies">2.2 Synthetic proxies</h3>
+<p>When no single older fund can cover a fund's pre-history, the chain can use a
+<strong>synthetic proxy</strong>: a small recipe that constructs an appropriate
+euro-denominated series from longer-history building blocks — for example, an
+EUR-hedged Japan or S&amp;P 500 series reconstructed from a foreign-currency index
+plus the euro short-rate carry, or a 2×-leveraged variant reconstructed from
+its unleveraged underlying with the financing cost and fees applied. These
+synthetic segments are recorded with the same "stitched proxy" provenance as
+any other backfill.</p>
+<h3 id="23-bad-data-scrubbing">2.3 Bad-data scrubbing</h3>
+<p>Public price feeds occasionally return spurious values — a price that drops by
+half and recovers the next day, or a frozen "flat run" that is really a
+forward-filled gap. The pipeline detects and removes these "round-trip" spikes
+and flat-run artefacts at two stages (on each individual series before
+stitching, and again on the full combined dataset), replacing the corrupt value
+so it does not distort returns. Genuinely implausible moves that are not
+round-trips are raised for human review rather than silently patched.</p>
+<h3 id="24-survivorship-and-selection-bias-an-important-caveat">2.4 Survivorship and selection bias (an important caveat)</h3>
+<p>The universe is hand-curated from <strong>today's</strong> listings, and that embeds two
+biases that stitching cannot remove:</p>
 <ul>
-<li><strong>Survivorship bias.</strong> ETFs that closed, merged or delisted between 2008 and today are absent from <code>pea_universe.yaml</code> — the catalog only contains funds that survived. A 2008 investor could not have known which wrappers would still exist in 2026.</li>
-<li><strong>Selection bias via pre-inception proxies.</strong> Stitched-proxy trading backtests an asset <em>before it existed</em>, using a proxy chain chosen with full hindsight (we picked proxies for indices that turned out to matter; nobody back-extends the trackers of themes that died).</li>
+<li><strong>Survivorship bias.</strong> ETFs that closed, merged, or delisted between 2008
+  and today are simply absent — the catalog contains only funds that survived.
+  A 2008 investor could not have known which would still exist in 2026.</li>
+<li><strong>Selection bias from hindsight proxies.</strong> Back-extending a fund before it
+  existed uses proxies chosen with full knowledge of which indices turned out
+  to matter; nobody back-extends the trackers of themes that died.</li>
 </ul>
-<p>Why the framework accepts this rather than "fixing" it:</p>
+<p>The framework accepts this rather than pretending to fix it, for a few
+reasons. The rotation signal is <strong>relative momentum across broad regional
+benchmark indices</strong> (MSCI World, the S&amp;P 500, EM Asia, EuroStoxx, and the
+like), not single-stock or thematic picking — index families of this breadth
+existed throughout the window and none disappeared, so the bias is far milder
+than in stock-level backtests where dead names carry the loss tail. The
+buy-and-hold benchmarks share the same universe and the same stitching, so
+<em>relative</em> comparisons (rotation versus holding the same sleeves) are much less
+distorted than absolute levels. And the validation that the project leans on is
+out-of-sample, not the flattering full-sample curve.</p>
+<p>Practical reading: treat absolute full-sample returns as <strong>upper-bound
+estimates</strong>, and put the most weight on out-of-sample results — especially the
+further back a backtest reaches past a fund's real inception. The
+store-of-value sleeves (gold, crypto) deserve the most caution, since they were
+added to the universe precisely <em>because</em> their recent decade looked the way it
+did.</p>
+<h2 id="3-the-cost-model">3. The cost model</h2>
+<p>Trading is not free, and the backtest charges for it. Each time a strategy
+rebalances, the cost is computed <strong>per fund</strong>, on the amount of that fund that
+actually changes hands, not as a flat fee on total turnover. Two components are
+charged:</p>
 <ul>
-<li>The rotation signal is <strong>relative momentum across broad regional benchmark indices</strong> (MSCI World, S&amp;P 500, EM Asia, EuroStoxx…), not single-fund picking. Index families of this breadth existed throughout the window and none disappeared; the wrapper choice mostly affects TER/spread, which the cost model carries explicitly. The bias is therefore far milder than in stock-level or thematic-fund backtests, where dead names carry the loss tail.</li>
-<li>Buy-and-hold <strong>benchmarks on the dashboard share the same universe and the same stitching</strong>, so <em>relative</em> comparisons (rotation vs B&amp;H of the same sleeves) are much less distorted than absolute levels.</li>
-<li>Validation weight rests on <strong>walk-forward OOS, the WFO matrix, DSR/PBO</strong> — not on the full-sample curve those biases flatter most.</li>
+<li>a <strong>broker commission</strong> — a small one-way percentage reflecting a typical
+  French retail brokerage tier; and</li>
+<li><strong>half the bid-ask spread</strong> — the strategy is assumed to buy at the ask and
+  sell at the bid, so half the round-trip spread is paid on each traded
+  amount.</li>
 </ul>
-<p>Read absolute full-sample CAGRs as <strong>upper-bound estimates</strong>; the further back the window reaches past an asset's inception (the <code>proxy_chain</code> splice dates in <code>pea_universe.yaml</code> record exactly where), the more weight to put on the stitched-OOS numbers instead. The store-of-value sleeves (<code>SOV-*</code>) deserve the most caution: gold/BTC wrappers were promoted into the universe <em>because</em> their decade looked the way it did — a textbook hindsight selection.</p>
-<h2 id="4-cost-model-etfmombacktest">4. Cost model (<code>etfmom/backtest/</code>)</h2>
-<p>Per-rebalance cost is computed <strong>per-asset</strong>, not as a flat rate on aggregate turnover:</p>
-<pre><code>cost_at_fill = Σ_i |delta_w_i| * (per_trade_pct/100 + est_spread_bps_i / 2 / 10000)
-</code></pre>
-<p>Charged as a negative return on the fill day.</p>
+<p>The cost is applied as a negative return on the day the trade fills. Per-fund
+spread estimates are kept as static figures in the asset catalog
+(<a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>), refreshed by hand as real-world
+spreads drift — public feeds do not provide reliable historical spreads, so a
+considered static estimate is the honest approach. Tighter-book flagship funds
+carry a few basis points; thin satellite and single-country sleeves carry
+considerably more.</p>
+<h2 id="4-execution-timing-and-warm-up">4. Execution timing and warm-up</h2>
+<p>The backtest is careful never to use information it could not have had at the
+time.</p>
 <ul>
-<li><code>per_trade_pct</code> (shared, currently <code>0.05%</code> one-way) covers the broker commission (Boursorama / Interactive Brokers tier).</li>
-<li><code>est_spread_bps</code> per asset is the <strong>estimated round-trip bid-ask spread</strong>. Half of it is added per traded notional (the strategy buys at ask and sells at bid).</li>
+<li>Strategies rebalance on a <strong>Saturday-anchored</strong> schedule (the exact cadence
+  — weekly, monthly, quarterly, and so on — is configurable). Saturday is the
+  first calendar day after Friday's close, mirroring a real investor reviewing
+  signals over the weekend.</li>
+<li>The <strong>signal</strong> is computed from the preceding Friday's close.</li>
+<li>The <strong>trade fills the following Monday</strong>, priced as an average of Monday's
+  open, high, and low (an approximation of a spread-out execution that is more
+  robust than using a single closing print). Costs are charged on that fill.</li>
 </ul>
-<p>Currently configured on the active assets with explicit spreads (see <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>):</p>
-<table>
-<thead>
-<tr>
-<th>Asset</th>
-<th>Spread (bps)</th>
-<th>Why</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>sp500</code> (PSP5.PA)</td>
-<td>5</td>
-<td>High-AUM flagship, tight book</td>
-</tr>
-<tr>
-<td><code>eurostoxx50</code> (C50.PA)</td>
-<td>5</td>
-<td>Eurozone large-cap flagship</td>
-</tr>
-<tr>
-<td><code>world</code> (DCAM.PA)</td>
-<td>10</td>
-<td>Mid sleeve, recent launch</td>
-</tr>
-<tr>
-<td><code>msci_europe</code> (PCEU.PA)</td>
-<td>10</td>
-<td>EU-broad sleeve, mid AUM</td>
-</tr>
-<tr>
-<td><code>us_pea_us_tech</code> (PANX.PA)</td>
-<td>10</td>
-<td>Mid-large AUM, ~€1m/day Paris ADV</td>
-</tr>
-<tr>
-<td><code>us_lev_nasdaq_2x</code> (LQQ.PA)</td>
-<td>10</td>
-<td>€1.3bn retail flagship, ~€8m/day ADV</td>
-</tr>
-<tr>
-<td><code>emu_esg_broad_acc</code> (MFED.PA)</td>
-<td>10</td>
-<td>~€1bn EMU large-cap, active book</td>
-</tr>
-<tr>
-<td><code>emu_esg_select_acc</code> (CMU.PA)</td>
-<td>10</td>
-<td>~€1.5bn EMU large-cap DR</td>
-</tr>
-<tr>
-<td><code>us_msci_esg</code> (CU2.PA)</td>
-<td>15</td>
-<td>~€0.5bn AUM, quiet Paris book</td>
-</tr>
-<tr>
-<td><code>emu_high_div</code> (CD8.PA)</td>
-<td>15</td>
-<td>€0.3bn concentrated dividend basket</td>
-</tr>
-<tr>
-<td><code>eu_banks</code> (BNK.PA)</td>
-<td>20</td>
-<td>Sector ETF, mid liquidity</td>
-</tr>
-<tr>
-<td><code>em_asia</code> (PAASI.PA)</td>
-<td>25</td>
-<td>EM exposure, thinner book</td>
-</tr>
-<tr>
-<td><code>russell2000</code> (RS2K.PA)</td>
-<td>30</td>
-<td>Satellite, small-cap</td>
-</tr>
-<tr>
-<td><code>emu_small</code> (MMS.PA)</td>
-<td>30</td>
-<td>EU small-cap, satellite liquidity</td>
-</tr>
-<tr>
-<td><code>topix</code> (PTPXE.PA)</td>
-<td>30</td>
-<td>Satellite, low AUM</td>
-</tr>
-<tr>
-<td><code>topix_hedged</code> (PTPXH.PA)</td>
-<td>30</td>
-<td>EUR-hedged variant, mid liquidity</td>
-</tr>
-<tr>
-<td><code>us_industrials</code> (PDJE.PA)</td>
-<td>30</td>
-<td>Small AUM (~€85m), thinnest active book</td>
-</tr>
-<tr>
-<td><code>ap_asia_pacific</code> (PAEJ.PA)</td>
-<td>30</td>
-<td>Underlying closed during EU afternoon</td>
-</tr>
-<tr>
-<td><code>in_pea_india</code> (PINR.PA)</td>
-<td>40</td>
-<td>Single-country India swap, costly hedge</td>
-</tr>
-<tr>
-<td><code>cn_pea_china</code> (PASI.PA)</td>
-<td>40</td>
-<td>Smallest AUM (~€74m), HK time-zone gap</td>
-</tr>
-</tbody>
-</table>
-<p>The active rotation slate is fully covered. Assets without an explicit
-<code>est_spread_bps</code> use <code>0</code> — defensible for the broad discovery pool which
-only feeds the correlation page, but any asset promoted onto an active
-rotation strategy must get an estimate first.</p>
-<h3 id="41-why-estimate-spreads-in-yaml-rather-than-fetch-live">4.1 Why estimate spreads in YAML rather than fetch live?</h3>
-<p><code>yfinance</code>'s <code>Ticker.info["bid"]/["ask"]</code> is intraday-only and frequently null for thinly-traded EU tickers. Boursorama scraping is not API-stable. A static per-asset estimate is the only honest backtesting approach — refresh sporadically as the live spreads shift.</p>
-<h2 id="5-execution-timing">5. Execution timing</h2>
-<p>All rotation strategies share the same Saturday-anchored cadence:</p>
+<p>This ordering guarantees no look-ahead: the decision uses only data available
+before the trade.</p>
+<p>To make different strategies comparable from day one, every cadence fires its
+first rebalance on the same first Saturday of the backtest range, then resumes
+its natural schedule. Strategies that include the safe sleeve can sit in cash
+during warm-up; strategies without one simply begin their plotted history when
+they first have a real signal.</p>
+<h3 id="41-the-lookback-reads-pre-start-history">4.1 The lookback reads pre-start history</h3>
+<p>A momentum score needs history <em>before</em> the day it is computed. The backtest
+therefore lets the scoring window read price history from <strong>before</strong> the
+backtest's nominal start date — the start date trims only the displayed
+equity and metric panel, not the price history feeding the score. A backtest
+that starts in 2008 is fully invested from day one, scoring funds off 2007
+prices, rather than idling in cash while it warms up.</p>
+<p>A <strong>data-history guard</strong> protects against a subtler trap: a fund whose history
+begins too late would be silently excluded from selection until it accumulated
+enough data. When a start date is set explicitly, the backtest refuses to run —
+naming the offending funds — if any candidate lacks enough history before the
+start to compute its longest lookback. The fix is to extend that fund's proxy
+backfill (see §2) or to move the start date later. A full-range backtest is
+exempt: it intentionally warms each fund in as soon as it has enough history.</p>
+<h2 id="5-performance-metrics">5. Performance metrics</h2>
+<p>Each strategy's daily equity curve and rebalance log are summarised by a
+standard set of metrics, including:</p>
 <ul>
-<li><strong>Rebalance day R</strong> is a Saturday (the rotation cadence determines which ones). Saturday is the calendar day immediately after Friday's close, so rebalance outputs are available to the user across the weekend, before Monday's open.</li>
-<li><strong>Signal date S = R - 1d</strong>: the preceding Friday's close is what scoring sees.</li>
-<li><strong>Fill date F = R + 2d</strong>: Monday is the execution day. The default fill price is <code>(open+high+low)/3</code> of Monday (<code>fill_mode = "ohl3"</code>), which approximates a TWAP execution and is more robust than picking the close. The <code>fill_mode = "close"</code> knob switches to Monday's close for sensitivity testing. The day's gross return splits into an AM leg (Friday-close → fill price, on the OLD weights) and a PM leg (fill price → Monday-close, on the NEW weights); costs are charged on the fill leg as a negative return.</li>
+<li><strong>CAGR</strong> — the compound annual growth rate over the run.</li>
+<li><strong>Maximum drawdown</strong> — the worst peak-to-trough decline.</li>
+<li><strong>Sharpe ratio</strong> — return per unit of total volatility.</li>
+<li><strong>Sortino ratio</strong> — like Sharpe, but penalising only downside volatility.</li>
+<li><strong>Hit rate</strong> — the fraction of intervals that ended higher than they began.
+  Because a per-<em>day</em> hit rate is dominated by quiet drift days, the more
+  meaningful figure is the per-<em>rebalance</em> hit rate: did equity at the next
+  rebalance exceed equity at this one? That matches the actual bet the
+  strategy makes each cycle.</li>
+<li>plus turnover, total cost, drawdown-duration measures, and the final equity
+  multiple.</li>
 </ul>
-<p>This guarantees no look-ahead and matches the realistic case for a French PEA holder reviewing weekly signals over the weekend.</p>
-<h3 id="51-cross-cadence-start-alignment">5.1 Cross-cadence start alignment</h3>
-<p>Every cadence rebalances <strong>unconditionally on the first Saturday of the backtest range</strong>, even when that Saturday isn't a calendar-anchor day for the cadence's natural rule (e.g. <code>quarterly_last_saturday</code> with a backtest starting mid-Feb still fires its first rebalance on the first Saturday of February, then resumes the calendar-quarter cadence — Apr / Jul / Oct last Saturdays). Every subsequent rebalance follows the cadence's own rule. The result: regardless of whether you compare a <code>weekly_saturday</code>, <code>quarterly_last_saturday</code>, or <code>semiannual_last_saturday</code> strategy, all of them have their first rebalance on the same day-1 Saturday and start trading from the same allocation date — making cross-cadence equity curves directly comparable from t=0.</p>
-<p><strong>Strategies without a safe asset listed</strong> (e.g. <code>pair_us_em</code>, <code>pair_us_em_lev</code>) have their equity curve <strong>anchored to the trading day before their first real signal</strong> instead of the backtest's first Saturday. Without a safe sleeve to park warm-up weight, there is no defensible "100% in 0%-return cash" warm-up — the curve simply begins when the strategy actually has a signal. Cross-strategy plots therefore align on the start date only among strategies sharing safe-asset listing; strategies without a safe asset plot a shorter (post-warm-up) history.</p>
-<p><strong>Buy-and-hold benchmarks share the same alignment</strong>: a <code>buy_and_hold</code> strategy's equity curve is also slid forward to the first Saturday of the backtest range (same day rotations fire), so static benchmarks plot apples-to-apples against the rotation lineup on the dashboard. Falls back to the latest-listed-sleeve's first available date if some held asset has no data on that Saturday — alignment is achievable only when the data permits.</p>
-<h3 id="52-warm-up-the-lookback-reads-pre-start-history">5.2 Warm-up: the lookback reads pre-<code>start</code> history</h3>
-<p>The momentum score at signal date <em>S</em> looks back <code>lookbacks_days</code> trading days from <em>S</em>. That window reads price history from <strong>before</strong> the backtest <code>start</code>: the <code>start</code>/<code>end</code> filter is applied only to the equity/metric panel (<code>prepare_wide_frames</code> trims <code>wide</code>/<code>fill_wide</code>), <strong>not</strong> to the long price frame that feeds scoring (<code>prices_long_processed</code>). So a 12-month-lookback backtest starting 2008-08-15 is <strong>live and fully invested from day 1</strong>, scoring every asset off 2007 closes — metrics are warmed up, not idling in cash. The first-fill date drifts later for longer lookbacks <strong>only</strong> when an asset's available history is too short (e.g. a 20-month window has no value until 20 months after the asset's first bar), never because of a post-<code>start</code> warm-up policy.</p>
-<p><strong>Per-strategy start (<code>backtest_start:</code>).</strong> The run-level <code>--start</code>
-(default 2008-08-15) applies to every strategy unless the strategy
-declares its own <code>backtest_start:</code> in <code>strategies/</code> — the mechanism
-that lets one lineup mix the PEA slate's GFC anchor with later-history
-sleeves (store-of-value proxies begin 2014/2017). All start-sensitive
-machinery below (warm-up, data-history guard, optimizer windows)
-evaluates each strategy against its own effective start.</p>
-<p><strong>Data-history guard (<code>engine.run</code>, fail-loud).</strong> Because an asset whose history begins after <code>start − lookback</code> would be <strong>silently NaN-excluded</strong> from selection until it accrues enough bars, <code>backtest.run</code> raises (when <code>start</code> is explicitly set) if any listed asset has fewer than <code>max(lookbacks_days)</code> bars before <code>start</code>. The fix is to <strong>extend the asset's <code>proxy_chain</code> backfill</strong> (preferred — see §3) so its synthetic history reaches back far enough, or to raise <code>start</code>. The error lists each offending asset and its first data date. A full-range backtest (<code>start=None</code>) is exempt: it intentionally warms up from the data floor, each asset entering selection once it has <code>lookback</code> history. Lookback length itself is hard-capped at <strong>16 months</strong> (<code>universe.MAX_LOOKBACK_DAYS = 336</code>); see §8 glossary.</p>
-<h2 id="6-performance-metrics-etfmommetricspy">6. Performance metrics (<code>etfmom/metrics.py</code>)</h2>
-<p>Computed on the daily equity curve plus the rebalance log:</p>
-<table>
-<thead>
-<tr>
-<th>Metric</th>
-<th>Definition</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>cagr</code></td>
-<td><code>(equity[-1] / equity[0]) ** (1/years) - 1</code></td>
-</tr>
-<tr>
-<td><code>volatility_ann</code></td>
-<td>Daily-return std × √252</td>
-</tr>
-<tr>
-<td><code>sharpe</code></td>
-<td><code>mean_daily_return / vol_daily × √252</code>. <strong>rf=0</strong>: see note below.</td>
-</tr>
-<tr>
-<td><code>sortino</code></td>
-<td><code>mean_daily / downside_dev × √252</code> where <code>downside_dev² = sum(min(r, 0)²) / n_obs</code> (canonical Pedersen-Satchell divisor — divides by total observations, not by <code>n_downside</code>; see <code>metrics.py:compute</code> docstring). <code>None</code> when there are no down-days (denominator is zero) — undefined ratio, rendered as "—".</td>
-</tr>
-<tr>
-<td><code>max_drawdown</code></td>
-<td>Worst peak-to-trough decline</td>
-</tr>
-<tr>
-<td><code>calmar</code></td>
-<td><code>cagr / |max_drawdown|</code>. <code>None</code> when MaxDD is zero — undefined ratio, rendered as "—".</td>
-</tr>
-<tr>
-<td><code>ulcer_index</code></td>
-<td>RMS of the drawdown series (Martin &amp; McCann). Weights depth AND duration of drawdowns; quick recoveries pay back, deep-and-long drawdowns dominate. Always <code>≥ 0</code>.</td>
-</tr>
-<tr>
-<td><code>upi</code></td>
-<td><code>cagr / ulcer_index</code>. <code>None</code> when Ulcer Index is zero — undefined ratio, rendered as "—". Stricter than Calmar (sees the full drawdown series, not just the deepest single point); also a grid-search objective.</td>
-</tr>
-<tr>
-<td><code>hit_rate</code></td>
-<td>Fraction of trading days with positive return — correlated with volatility more than skill</td>
-</tr>
-<tr>
-<td><code>rebalance_hit_rate</code></td>
-<td>Fraction of rebalance intervals where equity at the next rebalance is above this one</td>
-</tr>
-<tr>
-<td><code>turnover_per_year</code></td>
-<td>Annualised L1 turnover (sum of per-rebalance turnovers / years)</td>
-</tr>
-<tr>
-<td><code>realloc_pct</code></td>
-<td>Fraction of rebalance assessments that produced an actual reallocation (turnover &gt; 0). Lower = more rebalances re-confirmed the prior holdings.</td>
-</tr>
-<tr>
-<td><code>final_equity</code></td>
-<td>Last value of the equity curve (1.0 at backtest start, growth multiple at end)</td>
-</tr>
-<tr>
-<td><code>total_cost</code></td>
-<td>Sum of per-rebalance costs over the run</td>
-</tr>
-<tr>
-<td><code>avg_corr</code></td>
-<td>Average pairwise daily-return correlation across the strategy's risky universe</td>
-</tr>
-</tbody>
-</table>
-<h3 id="61-rf0-in-sharpe-sortino">6.1 <code>rf=0</code> in Sharpe / Sortino</h3>
-<p>The framework already absorbs the risk-free rate at the strategy level: a strategy that lists the safe asset in its <code>assets:</code> will rotate into it during crashes (€STR yield wins the rank when equity scores collapse). Strategies that don't list a safe asset don't earn warm-up yield (their equity curve is anchored to the first real signal — see §5.1). Subtracting <code>rf</code> again at the metric layer would double-count the safe-asset return for safe-listing strategies. The dashboard's Sharpe is therefore directly comparable across rotation strategies with similar safe-asset treatment, but slightly biased upward when comparing safe-listing strategies against pure-equity ones.</p>
-<h3 id="62-per-rebalance-hit-rate">6.2 Per-rebalance hit rate</h3>
-<p>Per-day hit rate is near-meaningless for a slow rotation strategy — sample size is dominated by quiet drift days. The per-rebalance hit rate ("did the equity at the next rebalance exceed the equity at this one?") is the meaningful skill measure: sample size = number of rebalances, and that's exactly the bet the strategy is making each cycle.</p>
-<h2 id="7-discovery-redundancy">7. Discovery &amp; redundancy</h2>
-<p>The broad PEA-eligible Amundi universe in <a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a> is fetched independently and used for correlation-matrix exploration. Two diagnostics are produced:</p>
+<p>By convention the <strong>risk-free rate is treated as zero</strong> in the Sharpe and
+Sortino ratios. The framework already absorbs the risk-free return at the
+strategy level — a strategy that holds the €STR safe sleeve earns that yield
+directly in its equity curve when it rotates to safety — so subtracting a
+risk-free rate again at the metric stage would double-count it. This keeps the
+ratios directly comparable across strategies that treat the safe sleeve the
+same way.</p>
+<h2 id="6-discovery-and-redundancy">6. Discovery and redundancy</h2>
+<p>Beyond the active strategies, the broad PEA-eligible universe is also used for
+exploration: a correlation matrix across funds feeds a clustering step that
+groups funds whose daily returns move almost identically, and picks the
+<strong>lowest-fee</strong> member of each group as its representative. Because the fee is
+known in advance, that choice cannot be biased by hindsight performance. A
+diagnostic then flags strategies that hold two near-identical funds (keep one)
+or that hold a fund when a cheaper, equivalent one exists (replace it).</p>
+<h2 id="7-glossary">7. Glossary</h2>
+<p>A few terms used throughout the dashboard and these docs:</p>
 <ul>
-<li><strong>Complete-link clustering</strong> (<code>diagnostic.correlations.find_groups</code>) groups assets where <em>every</em> member-to-member daily correlation exceeds the threshold (default 0.90). This avoids the chaining property of single-link clustering, where two weakly correlated assets get lumped together via a high-correlation bridge pair.</li>
-<li><strong>Best-in-group representative</strong> (<code>diagnostic.correlations.best_in_group</code>) picks the <strong>lowest-TER</strong> member of each group. TER is decided ex-ante, so the choice is immune to in-sample selection bias — unlike a 1-year CAGR ranking, which would be momentum-on-momentum and defeat the prospective spirit of dual momentum.</li>
+<li><strong>Momentum rotation</strong> — periodically reallocating to the assets with the
+  strongest recent performance.</li>
+<li><strong>Rank-only selection</strong> — choosing assets purely by their score ranking,
+  with no positive-momentum floor and no separate safe-asset gate.</li>
+<li><strong>Safe asset / safe sleeve</strong> — a low-volatility cash proxy tracking the euro
+  short-term rate (€STR). When included among a strategy's candidates, it can
+  win the top ranks during crashes and provide a defensive allocation.</li>
+<li><strong>Lookback</strong> — the trailing window over which a fund's recent return is
+  measured to form its momentum score.</li>
+<li><strong>Rebalance / cadence</strong> — the act of recomputing and re-applying the
+  allocation, and the fixed (Saturday-anchored) schedule on which it happens.</li>
+<li><strong>Proxy chain</strong> — the ordered set of older series used to extend a fund's
+  price history back before its real inception.</li>
+<li><strong>Stitching</strong> — splicing a fund's real series onto its rescaled proxy
+  history into one continuous level series.</li>
+<li><strong>Buy-and-hold benchmark</strong> — a static, never-rebalanced allocation used as a
+  baseline for comparison.</li>
+<li><strong>PEA</strong> — the French <em>Plan d'Épargne en Actions</em>, the tax-advantaged
+  equity account whose eligibility rules define this universe.</li>
 </ul>
-<p><code>diagnostic.diagnose.diagnose_strategies</code> then cross-references each strategy's asset slice against these groups and emits two diagnostic types: <strong><code>remove</code></strong> (the strategy uses 2+ assets in the same redundancy group — keep one, drop the others) and <strong><code>replace</code></strong> (the strategy uses an asset that isn't the lowest-TER pick in its group).</p>
-<h2 id="8-glossary">8. Glossary</h2>
-<p>For future readers: the canonical vocabulary used across YAML, code, and dashboard. If a term doesn't appear here, it's not part of the framework's API surface.</p>
-<table>
-<thead>
-<tr>
-<th>Concept</th>
-<th>YAML</th>
-<th>Code field</th>
-<th>Dashboard label</th>
-<th>Notes</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>Score lookback windows (trading days)</td>
-<td><code>lookbacks_days: [21, 63, 126]</code></td>
-<td><code>Strategy.lookbacks_days</code>, <code>Scoring.lookbacks_days</code></td>
-<td><code>Scoring</code> (e.g. <code>ADM 1m/3m/6m mean</code>, <code>DM 12m</code>)</td>
-<td>Days, not months. 21 ≈ 1 month. <strong>Hard-capped at 16 months (336 days)</strong> — <code>universe.MAX_LOOKBACK_DAYS</code>, enforced on both the static value and the <code>optimize</code> axis; longer windows behave as a trend/valuation signal, not momentum.</td>
-</tr>
-<tr>
-<td>Score aggregation across lookbacks</td>
-<td><code>aggregation: mean</code></td>
-<td><code>Scoring.aggregation</code></td>
-<td>(folded into Scoring label)</td>
-<td><code>mean</code> / <code>median</code> / <code>min</code></td>
-</tr>
-<tr>
-<td>Allocation weighting rule</td>
-<td><code>rule: equal_weight</code> (shared) or <code>allocation_rule: score_proportional</code> (per strategy)</td>
-<td><code>Allocation.rule</code>, <code>Strategy.allocation_rule</code></td>
-<td><code>Allocation</code> (e.g. <code>top-3 equal</code>, <code>top-1 score-prop</code>)</td>
-<td><code>equal_weight</code> is canonical; <code>score_proportional</code> is the opt-in sensitivity exhibit.</td>
-</tr>
-<tr>
-<td>Per-region pre-filter</td>
-<td><code>top_n_per_region: 1</code> (omit for global top-N)</td>
-<td><code>Strategy.top_n_per_region</code></td>
-<td>(folded into Allocation label)</td>
-<td>When set (≥ 1), keeps the best <code>top_n_per_region</code> within each <code>dashboard_bucket</code>, THEN applies <code>top_n</code> as a global cap on the regional winners.</td>
-</tr>
-<tr>
-<td>Number of selected sleeves</td>
-<td><code>top_n: 3</code></td>
-<td><code>Strategy.top_n</code></td>
-<td>(folded into Allocation label)</td>
-<td>Required for rotation strategies; omitted for <code>buy_and_hold</code>. Meaning: global top-N when <code>top_n_per_region</code> is unset; otherwise <code>top_n</code> is the global cap applied after the per-region (<code>top_n_per_region</code>) filter.</td>
-</tr>
-<tr>
-<td>Per-region static weights</td>
-<td><code>regional_weights: {us: 0.6, europe: 0.1, asia: 0.3}</code></td>
-<td><code>Strategy.regional_weights</code></td>
-<td><code>Allocation</code> shows <code>static</code></td>
-<td>Paired with <code>top_n_per_region</code>; each region's weight is split equally among its picks.</td>
-</tr>
-<tr>
-<td>Rebalance cadence</td>
-<td><code>rebalance: monthly_last_saturday</code></td>
-<td><code>Strategy.rebalance</code></td>
-<td><code>Cadence</code> (e.g. <code>monthly</code>, <code>weekly</code>, <code>biweekly</code>, <code>quarterly</code>, <code>semiannual</code>)</td>
-<td>Values: <code>weekly_saturday</code>, <code>biweekly_saturday</code>, <code>monthly_last_saturday</code>, <code>monthly_first_saturday</code>, <code>quarterly_last_saturday</code>, <code>semiannual_last_saturday</code>. The monthly in-month anchor (last vs first Saturday) is chosen by the cadence string itself — there is no separate anchor field. Required for rotation strategies; omitted for <code>buy_and_hold</code>. Saturday-anchored only.</td>
-</tr>
-<tr>
-<td>Rebalance calendar anchor</td>
-<td><code>reference_date: 2020-01-04</code> (optional)</td>
-<td><code>Strategy.reference_date</code></td>
-<td>(none)</td>
-<td>Anchors the cadence grid when a strategy needs its Saturday sequence pinned to a specific date (e.g. biweekly parity). Absent ⇒ the schedule derives the anchor from the backtest range.</td>
-</tr>
-<tr>
-<td>Strategy mode</td>
-<td><code>mode: rotation</code> (default) or <code>mode: buy_and_hold</code></td>
-<td><code>Strategy.mode</code></td>
-<td>Reflected in <code>Scoring</code> label (<code>Buy &amp; Hold</code>)</td>
-<td>Buy-and-hold uses <code>static_weights:</code> (or equal-weight) and no rebalance.</td>
-</tr>
-<tr>
-<td>Static buy-and-hold weights</td>
-<td><code>static_weights: {world: 0.6, cash_estr: 0.4}</code></td>
-<td><code>Strategy.static_weights</code></td>
-<td>(folded into <code>B&amp;H static</code> label)</td>
-<td>Optional; absent ⇒ equal-weight. Keys must match <code>assets:</code> exactly.</td>
-</tr>
-<tr>
-<td>Pre-selection filter</td>
-<td>(n/a)</td>
-<td>(n/a)</td>
-<td>—</td>
-<td>Selection is rank-only — there is no <code>score &gt; 0</code> floor and no absolute-momentum gate.</td>
-</tr>
-<tr>
-<td>Safe asset</td>
-<td><code>is_safe: true</code> on a catalog entry (currently <code>cash_estr</code>, which fetches via <code>synth_proxy: estr</code>)</td>
-<td><code>Config.safe_asset</code> (a regular <code>Asset</code>), <code>Config.safe_asset_id</code></td>
-<td><code>safe</code> chip in the <strong>Cash</strong> column</td>
-<td>The role flag (<code>is_safe</code>) and the fetcher recipe (<code>synth_proxy</code>) are independent — <code>is_safe</code> marks the engulfing-filter / residual-holder reference; <code>synth_proxy</code> routes the fetch path. Treated like any other asset under the rank-only methodology — list it in a strategy's <code>assets:</code> to give it a chance to win the top-N during crashes.</td>
-</tr>
-<tr>
-<td>Residual holder</td>
-<td>(implicit)</td>
-<td><code>backtest.engine.run</code> <code>residual_holder</code></td>
-<td>(none — folds into safe asset's chip)</td>
-<td>The strategy's safe asset id when listed; <code>None</code> otherwise. Catches rounding shortfalls (rare under largest-remainder). Strategies without a safe asset listed have their equity curve anchored to the first real signal, no warm-up cash.</td>
-</tr>
-<tr>
-<td>Per-asset bid-ask spread (bps)</td>
-<td><code>est_spread_bps: 5</code></td>
-<td><code>Asset.est_spread_bps</code></td>
-<td>(folded into <code>total_cost</code>)</td>
-<td>Half-spread added per traded notional.</td>
-</tr>
-<tr>
-<td>Asset region bucket</td>
-<td>(n/a — derived from <code>category:</code>)</td>
-<td><code>regions.dashboard_bucket(Asset.category)</code></td>
-<td>Drives the <strong>US / LatAm / Europe / Asia / World</strong> signal-table columns.</td>
-<td>Coarse buckets: <code>us</code> / <code>latam</code> (Emerging-LatAm) / <code>europe</code> (incl. eurozone/france/germany) / <code>asia</code> (incl. japan/em_asia/em) / <code>world</code> / <code>sov</code> (store-of-value: <code>SOV-*</code> categories — gold/silver/crypto sleeves, not PEA-eligible). Cash-* categories ⇒ <code>cash</code> column.</td>
-</tr>
-</tbody>
-</table>
+<p>For the configurable strategy formalism behind these concepts, see
+<a href="GRID_SEARCH.md"><code>GRID_SEARCH.md</code></a>; for the mapping of features to strategies,
+<a href="FEATURE_MATRIX.md"><code>FEATURE_MATRIX.md</code></a>; and for the advanced methods,
+<a href="METHODOLOGY_ADVANCED.md"><code>METHODOLOGY_ADVANCED.md</code></a>.</p>
     </div>
 
     <footer></footer>
