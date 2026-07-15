@@ -73,6 +73,15 @@
       background: rgba(63, 185, 80, 0.18);
       color: #3fb950;
     }
+    /* Bad-data flag: a held ETF is under the grace-window hold (its price is
+       frozen at the last plausible value pending a Yahoo fix). Red name +
+       dotted underline signalling a hover tooltip that names the ETF(s). */
+    .pill.bad-data {
+      background: rgba(248, 81, 73, 0.18);
+      color: #f85149;
+      border-bottom: 1px dotted currentColor;
+      cursor: help;
+    }
     /* weight-bracket colored chips for the signal table */
     .chip {
       display: inline-block;
@@ -208,7 +217,7 @@
 <body>
   <div class="container">
     <h1>ETFs Asia</h1>
-    <div class="subtitle">7 strategies · last update 2026-07-15 07:52 UTC ·
+    <div class="subtitle">7 strategies · last update 2026-07-15 09:18 UTC ·
       data range 2008-08-15 → 2026-07-14
     </div>
     <nav>
