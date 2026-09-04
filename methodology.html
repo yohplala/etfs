@@ -142,6 +142,8 @@ editing the source code.</p>
 </li>
 <li><a href="#3-the-cost-model">3. The cost model</a></li>
 <li><a href="#4-execution-timing-and-warm-up">4. Execution timing and warm-up</a><ul>
+<li><a href="#40a-which-candle-is-read-for-what-the-price-usage-doctrine">4.0a Which candle is read for what — the price-usage doctrine</a></li>
+<li><a href="#40-where-a-backtest-starts-and-stops">4.0 Where a backtest starts and stops</a></li>
 <li><a href="#41-the-lookback-reads-pre-start-history">4.1 The lookback reads pre-start history</a></li>
 </ul>
 </li>
@@ -161,11 +163,14 @@ PEA-eligible UCITS ETFs (the funds a French retail investor can hold inside a
 <li><strong>Weight</strong> the chosen funds.</li>
 <li><strong>Rebalance</strong> on a fixed weekly-anchored schedule, repeating the cycle.</li>
 </ol>
-<p>Selection is <strong>rank-only</strong>: the strategy holds the current leaders. There is
-no requirement that a fund's momentum be positive, and no separate "beat the
-safe asset" gate. Even in a market where every fund has fallen, the strategy
-still allocates to the least-bad performers rather than automatically going to
-cash. The scoring recipe (for example, blending one-, three-, and six-month
+<p>Selection is <strong>rank-only</strong> by default: the strategy holds the current leaders,
+with no requirement that a fund's momentum be positive. Even in a market where
+every fund has fallen, the default still allocates to the least-bad performers
+rather than automatically going to cash. An optional engulfing gate
+(<code>selection.safe_asset_filter</code>) overrides that by requiring each pick to beat
+the safe sleeve's own score by a margin; it is armed on the SOV and cushioned
+lineups and is itself a searchable axis (see
+<a href="GRID_SEARCH.md"><code>GRID_SEARCH.md</code></a> §2.5). The scoring recipe (for example, blending one-, three-, and six-month
 returns versus using a single twelve-month window) is a configurable choice;
 labels such as "ADM" or "DM" seen on the dashboard describe that recipe, not a
 filter.</p>
@@ -176,15 +181,18 @@ documented in <a href="GRID_SEARCH.md"><code>GRID_SEARCH.md</code></a>, and
 <a href="FEATURE_MATRIX.md"><code>FEATURE_MATRIX.md</code></a> records which live strategies use
 which.</p>
 <h3 id="11-the-safe-asset-defence-a-concept">1.1 The safe-asset defence (a concept)</h3>
-<p>The framework's defence against crashes comes from <strong>ranking, not from a
-filter</strong>. The asset catalog includes a low-volatility "safe" sleeve — a cash
-proxy that tracks the euro short-term rate (€STR). When a strategy includes
+<p>The framework's primary defence against crashes comes from <strong>ranking, not
+from a filter</strong>. The asset catalog includes a low-volatility "safe" sleeve — a
+cash proxy that tracks the euro short-term rate (€STR). When a strategy includes
 this safe sleeve among its candidates, its small steady positive score
 naturally rises to the top of the ranking when equity scores collapse in a
 bear market, producing a defensive, mostly-cash allocation organically. A
 strategy that does not include the safe sleeve forgoes this defence and stays
 invested in the least-bad equity through downturns. In short: what a strategy
-lists among its candidates is what it can hold.</p>
+lists among its candidates is what it can hold. The engulfing gate
+(<code>selection.safe_asset_filter</code>) adds an explicit second line on top of this,
+requiring each pick to clear the safe sleeve's score by a margin before it can
+be held.</p>
 <h3 id="12-rotation-versus-buy-and-hold">1.2 Rotation versus buy-and-hold</h3>
 <p>Two kinds of strategy coexist on the dashboard:</p>
 <ul>
@@ -216,7 +224,7 @@ cleanest first — used to extend its history before the fund itself existed:</p
 date. A multi-stage chain layers progressively older (and slightly less pure)
 proxies, each one only extending the segment before the cleaner data begins, so
 the recent, clean history is never contaminated by the deeper, dirtier
-backfill. The asset catalog (<a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>)
+backfill. The asset catalog (<a href="../data/universe/etfs-universe.yaml"><code>etfs-universe.yaml</code></a>)
 records each fund's chain and splice dates.</p>
 <h3 id="22-synthetic-proxies">2.2 Synthetic proxies</h3>
 <p>When no single older fund can cover a fund's pre-history, the chain can use a
@@ -276,7 +284,7 @@ charged:</p>
 </ul>
 <p>The cost is applied as a negative return on the day the trade fills. Per-fund
 spread estimates are kept as static figures in the asset catalog
-(<a href="../pea_universe.yaml"><code>pea_universe.yaml</code></a>), refreshed by hand as real-world
+(<a href="../data/universe/etfs-universe.yaml"><code>etfs-universe.yaml</code></a>), refreshed by hand as real-world
 spreads drift — public feeds do not provide reliable historical spreads, so a
 considered static estimate is the honest approach. Tighter-book flagship funds
 carry a few basis points; thin satellite and single-country sleeves carry
@@ -286,21 +294,92 @@ considerably more.</p>
 time.</p>
 <ul>
 <li>Strategies rebalance on a <strong>Saturday-anchored</strong> schedule (the exact cadence
-  — weekly, monthly, quarterly, and so on — is configurable). Saturday is the
+  — weekly, monthly, quarterly, and so on — is configurable). Two cadences sit
+  outside that anchor and are described in §4.0: <code>daily</code>, which rebalances on
+  every trading session, and the sub-daily <code>every_Nh</code> used by the 24/7 crypto
+  panel. Saturday is the
   first calendar day after Friday's close, mirroring a real investor reviewing
   signals over the weekend.</li>
 <li>The <strong>signal</strong> is computed from the preceding Friday's close.</li>
-<li>The <strong>trade fills the following Monday</strong>, priced as an average of Monday's
-  open, high, and low (an approximation of a spread-out execution that is more
-  robust than using a single closing print). Costs are charged on that fill.</li>
+<li>The <strong>trade fills the following Monday</strong>, the first candle that opens after
+  the decision, at the conservative prices of §4.0a. Costs are charged on that
+  fill.</li>
 </ul>
 <p>This ordering guarantees no look-ahead: the decision uses only data available
 before the trade.</p>
-<p>To make different strategies comparable from day one, every cadence fires its
-first rebalance on the same first Saturday of the backtest range, then resumes
-its natural schedule. Strategies that include the safe sleeve can sit in cash
-during warm-up; strategies without one simply begin their plotted history when
-they first have a real signal.</p>
+<h3 id="40a-which-candle-is-read-for-what-the-price-usage-doctrine">4.0a Which candle is read for what — the price-usage doctrine</h3>
+<p>Two things read candles, and they read different ones (GitHub #64; the code is
+<code>xmom/backtest/execution_price.py</code>, whose docstring is the normative text).</p>
+<ol>
+<li><strong>The signal</strong> — momentum and everything else that defines the new
+   allocation at rebalance time <code>T</code> — may use only candles that are <strong>complete
+   at <code>T</code></strong>: the candle immediately prior to <code>T</code> and earlier, any component or
+   combination of them. On the daily cadences that is Friday's candle for a
+   Saturday rebalance; on the hourly path the rebalance time is the <strong>close of
+   the signal bar</strong>, so the signal is that bar and the fill is the next one.</li>
+<li><strong>The execution</strong> is priced off the candle that <strong>opens at <code>T</code></strong> (the
+   <em>rebalance candle</em>: Monday for a Saturday rebalance, the next bar on the
+   hourly path), conservatively — a <strong>buy pays <code>(open + high) / 2</code></strong>, a <strong>sell
+   receives <code>(open + low) / 2</code></strong>. The engine carries this as the open (the
+   mark) plus a direction-dependent slippage on every traded unit, so a unit
+   held through a rebalance pays nothing and a unit that changes hands pays
+   exactly its half-range beside the fee and spread of §3.</li>
+<li><strong>P&amp;L and metrics therefore exist only once that candle is complete.</strong> A
+   rebalance whose execution candle is not in the panel — the last bar of an
+   hourly range on the grid, a Saturday whose Monday is past the data — books
+   no fill, no cost and no P&L; the equity curve is read at the last complete
+   candle, marked to its close, so the last rebalance with a booked fill is the
+   one-but-last.</li>
+</ol>
+<p>The single <code>fill_mode</code> knob (a function parameter, never a CLI flag) keeps one
+comparator: <code>close</code> marks at the close with no slippage — the optimistic fill a
+trader cannot count on — and exists for sensitivity only.</p>
+<h3 id="40-where-a-backtest-starts-and-stops">4.0 Where a backtest starts and stops</h3>
+<p><strong>One rule for the start: the first rebalance is due at the FIRST CANDLE</strong> —
+the first session on a daily panel, the first bar on an hourly one — whatever
+the cadence. <strong>Every rebalance after it follows the cadence purely.</strong></p>
+<table>
+<thead>
+<tr>
+<th>candles</th>
+<th>first rebalance</th>
+<th>then</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>daily</td>
+<td>the <strong>first session</strong></td>
+<td>the cadence's own rule: weekly/biweekly at the next Saturday, monthly at the last Saturday of the first month, quarterly at its quarter end</td>
+</tr>
+<tr>
+<td>hourly (<code>every_Nh</code>, crypto)</td>
+<td>the <strong>first bar</strong></td>
+<td>the next grid-aligned bar</td>
+</tr>
+</tbody>
+</table>
+<p>A backtest opening on Thursday 2024-02-01 therefore takes its position that
+Thursday under every cadence, and then resumes: weekly on 02-03, monthly on
+02-24, quarterly on 04-27. The arms of a cadence axis all open on the same day
+and diverge only by cadence, which is what makes them comparable.</p>
+<p>The opening rebalance uses <strong>session semantics</strong> — signal on that candle's own
+close, fill on the next candle — because there is no preceding Friday to read
+at the very start of the data. Every later rebalance of a Saturday-anchored
+cadence keeps the usual Friday-signal / Monday-fill triple described above.</p>
+<p>There is <strong>no forced first Saturday</strong>. That rule applied until 2026-08-19 and
+put the opening rebalance on a calendar anchor rather than at the start of the
+data, leaving a strategy uninvested for up to a week (and up to N−1 hours on
+the hourly path) at the front of its own backtest.</p>
+<p><strong>The end is deliberately NOT synchronised with anything.</strong> Metrics are read at
+the <strong>last candle of the backtest range</strong>, whatever the cadence and whenever
+the last rebalance happened — the position is held and compounded past it
+rather than the curve being truncated there. A quarterly strategy whose final
+rebalance was weeks before the end is therefore measured over exactly the same
+window as a daily one, which is what makes the two comparable at all.</p>
+<p>Strategies that include the safe sleeve can sit in cash during warm-up;
+strategies without one simply begin their plotted history when they first have
+a real signal.</p>
 <h3 id="41-the-lookback-reads-pre-start-history">4.1 The lookback reads pre-start history</h3>
 <p>A momentum score needs history <em>before</em> the day it is computed. The backtest
 therefore lets the scoring window read price history from <strong>before</strong> the
@@ -352,7 +431,8 @@ or that hold a fund when a cheaper, equivalent one exists (replace it).</p>
 <li><strong>Momentum rotation</strong> — periodically reallocating to the assets with the
   strongest recent performance.</li>
 <li><strong>Rank-only selection</strong> — choosing assets purely by their score ranking,
-  with no positive-momentum floor and no separate safe-asset gate.</li>
+  with no positive-momentum floor. The optional engulfing gate
+  (<code>selection.safe_asset_filter</code>) layers a safe-asset margin on top.</li>
 <li><strong>Safe asset / safe sleeve</strong> — a low-volatility cash proxy tracking the euro
   short-term rate (€STR). When included among a strategy's candidates, it can
   win the top ranks during crashes and provide a defensive allocation.</li>
